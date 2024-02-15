@@ -1,0 +1,13 @@
+Metadata-Version: 2.1
+Name: uvComplete
+Version: 0.1
+Summary: A package to generate uv complete arrays.
+Home-page: https://github.com/vincentmackay/uvComplete
+Author: Vincent MacKay
+Author-email: vince.mackay@gmail.com
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+
+# uvComplete
