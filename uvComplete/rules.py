@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display, clear_output
 import itertools
 import pickle
-from uvComplete.utils import check_fulfillment, get_array_size, get_n_new_fulfilled, get_min_distance_from_new_antpos, collision_check
+from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_new_fulfilled_list
 from multiprocessing import Pool
 
 class ExitLoopsException(Exception):
@@ -32,9 +32,6 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
         built = np.asarray([0,0])
         starting_from_scratch = True    
 
-
-    if show_plot:
-        fig,ax = plt.subplots(1,3,figsize=(15,5))
     
     if verbose:
         print('Before even beginning, have:')
@@ -51,15 +48,8 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
     # check fulfillment
     n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
     
-    newly_fulfilled_points = []
-    if built.shape != (2,) and built.shape[0]>2:
-        print('Computing the newly fulfilled points array of the already-built array...')
-        not_fulfilled_temp = np.copy(commanded)
-        for i in range(built.shape[0])[3:]:
-            built_temp = built[:i-1]
-            newly_fulfilled_points.append( get_n_new_fulfilled(built[i],built_temp,not_fulfilled_temp,fulfill_tolerance) )
-            _, _, _, not_fulfilled_temp = check_fulfillment(not_fulfilled_temp,built_temp, fulfill_tolerance)
-        print('Done, adding the remaining antennas.')
+    n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
+        
 
     not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
     flips = np.asarray([-1,1])
@@ -116,9 +106,7 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
                     # check if there's no collision and that we're still within max size
                     if (not collision_check(built_temp,diameter)) and built_temp_size<max_array_size: #245 us
                         success = True    
-                        n_new_fulfilled = get_n_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
-                        if n_new_fulfilled == 0:
-                            raise ExitLoopsException
+                        n_new_fulfilled,new_fulfilled = get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
                         min_distance_from_new_antpos = get_min_distance_from_new_antpos(built, new_antpos)
                         if n_new_fulfilled > max_n_new_fulfilled:
                             favored_new_antpos = new_antpos
@@ -162,45 +150,33 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
             break
             
         
-        n_newly_fulfilled = get_n_new_fulfilled(favored_new_antpos,built,not_fulfilled,fulfill_tolerance)
+        n_new_fulfilled,new_fulfilled = get_new_fulfilled(favored_new_antpos,built,not_fulfilled,fulfill_tolerance)
         built = np.vstack([built,favored_new_antpos])
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
         not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
         
-        newly_fulfilled_points.append(n_newly_fulfilled)
+        n_new_fulfilled_list.append(n_new_fulfilled)
+        n_not_fulfilled_list.append(n_not_fulfilled)
+        new_fulfilled_list.append(new_fulfilled)
         
         printout_condition = built.shape[0]%10==0 or (not_fulfilled.shape[0]<1000)
   
-        if show_plot and built.shape[0]%show_plot_skip==0:
+        if show_plot and (built.shape[0]%show_plot_skip==0 or not_fulfilled.shape[0]==0):
+            
             clear_output(wait=True)
-            #plt.pause(0.01)
+            if verbose:
+                print('{:d} newly fulfilled points'.format(n_new_fulfilled))
+                print('{:d} total antennas built'.format(built.shape[0]))
+                print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
             #built_uvs = antpos_to_uv(built)
-            ax[0].plot(commanded[:,0],commanded[:,1],'.',color='k',alpha=0.15,label='Commanded points')
-            ax[0].plot(fulfilled[:,0],fulfilled[:,1],'.',color='#00ff00',label='Fulfilled points')
-            ax[0].set_title('uv plane')
-            ax[0].set_xlabel(r'$u$')
-            ax[0].set_ylabel(r'$v$')
-            #ax[0].legend()
-            ax[1].plot(built[:,0],built[:,1],'.',color='k')
-            ax[1].set_title('Array')
-            ax[1].set_xlabel('EW')
-            ax[1].set_ylabel('NS')
-            ax[2].plot(range(len(newly_fulfilled_points)),newly_fulfilled_points,color='k')
-            ax[2].set_ylabel('Number of newly fulfilled points')
-            ax[2].set_xlabel('New antenna rank')
-            ax[2].grid()
-            for i in range(2):
-                ax[i].set_aspect('equal', adjustable='box')
-            #if built.shape[0]%10==0:
-            display(fig)
-        if verbose and show_plot and built.shape[0]%show_plot_skip==0:
-            print('{:d} newly fulfilled points'.format(n_newly_fulfilled))
-            print('{:d} total antennas built'.format(built.shape[0]))
-            print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+            fig,ax=plot_array(built,commanded,fulfill_tolerance,just_plot_array=False,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
+            plt.pause(0.01)
+            
+            #display(fig)
         if verbose and not show_plot:
             if printout_condition:
                 clear_output(wait=True)
-                print('{:d} newly fulfilled points'.format(n_newly_fulfilled))
+                print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                 print('{:d} total antennas built'.format(built.shape[0]))
                 print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
                 
@@ -242,7 +218,7 @@ def find_local_extrema(chunk, built, not_fulfilled, flips, fulfill_tolerance,dia
         built_temp = np.vstack([built, new_antpos]) # 50 us
 
         # check how many are newly fulfilled
-        n_new_fulfilled = get_n_new_fulfilled(new_antpos,built,not_fulfilled, fulfill_tolerance) # 15 ms
+        n_new_fulfilled, _ = get_new_fulfilled(new_antpos,built,not_fulfilled, fulfill_tolerance) # 15 ms
 
         # check what's the shortest distance of the new point from any already built antenna
         min_distance_from_new_antpos = get_min_distance_from_new_antpos(built, new_antpos) # 215 us
@@ -297,7 +273,7 @@ def create_array_rules_parallelized(commanded, built = None, diameter = 8.54, ma
     # sort by longest to shortest baseline
     commanded = commanded[np.argsort(order * np.linalg.norm(commanded, axis=1))]
     
-    newly_fulfilled_points = []
+    n_new_fulfilled_list,_,_ = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
     
     not_fulfilled = np.copy(commanded)
     
@@ -348,7 +324,7 @@ def create_array_rules_parallelized(commanded, built = None, diameter = 8.54, ma
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
         not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
         
-        newly_fulfilled_points.append(global_max_n_new_fulfilled)
+        n_new_fulfilled_list.append(global_max_n_new_fulfilled)
         
         if show_plot:
             clear_output(wait=True)
@@ -362,9 +338,9 @@ def create_array_rules_parallelized(commanded, built = None, diameter = 8.54, ma
             #ax[0].legend()
             ax[1].scatter(*zip(*built),marker='o', s=20,color='k')
             ax[1].set_title('Array')
-            ax[1].set_xlabel('EW')
-            ax[1].set_ylabel('NS')
-            ax[2].plot(range(len(newly_fulfilled_points)),newly_fulfilled_points,color='k')
+            ax[1].set_xlabel(r'EW [$\lambda$]')
+            ax[1].set_ylabel(r'NS [$\lambda$]')
+            ax[2].plot(range(len(n_new_fulfilled_list)),n_new_fulfilled_list,color='k')
             ax[2].set_ylabel('Number of newly fulfilled points')
             ax[2].set_xlabel('New antenna rank')
             ax[2].grid()
