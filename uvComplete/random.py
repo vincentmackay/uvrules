@@ -32,8 +32,6 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
     success_whole_array = False
     
     
-    
-    
     if built is not None:
         built = np.asarray(built)
         starting_from_scratch = False
@@ -161,15 +159,8 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
     return built
 
 
-def create_array_random_on_grid(n=0, commanded = -1,diameter=8.54, max_array_size=300, fulfill_tolerance=0.5,n_side_mesh=1000,show_plot = True,random_seed = 11141):
-    if isinstance(commanded, np.ndarray):
-        try_fulfill = True
-        n_not_fulfilled = commanded.shape[0]
-    elif isinstance(commanded, int):
-        try_fulfill = False
-        n_not_fulfilled = -1
-    else:
-        raise ValueError("Incorrect value for commanded")
+def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.54, max_array_size=300, fulfill_tolerance=0.5,always_add = False, n_side_mesh=1000,show_plot = True,verbose = True,random_seed = 11141):
+
     np.random.seed(random_seed)
     
     array_min_x = -max_array_size / 2
@@ -191,100 +182,135 @@ def create_array_random_on_grid(n=0, commanded = -1,diameter=8.54, max_array_siz
     
     # Filter out points outside the desired radius
     grid_points = grid_points[valid_indices]
+    grid_points_saved = np.copy(grid_points)
 
     print('Grid generated...')
 
-    built = np.asarray([[0,0]])
-    new_antpos = built[0]
+    if commanded is not None:
+        try_fulfill = True
+        just_plot_array = False
+        n_not_fulfilled = commanded.shape[0]
+    else:
+        print(f'No commanded points passed, just generating a random array of {n} points.')
+        try_fulfill = False
+        just_plot_array = True
+        n_not_fulfilled = -1
+        
+
+    
+    if built is not None:
+        built = np.asarray(built)
+        starting_from_scratch = False
+        
+        if not (built.shape == (2,) or (len(built.shape) == 2 and built.shape[1] == 2)):
+            print('Incorrect passed built array, using [0,0].')
+            built = np.asarray([0,0])
+            starting_from_scratch = True
+    else:
+        built = np.asarray([0,0])
+        starting_from_scratch = True    
+
+    
+    if verbose:
+        print('Before even beginning, have:')
+        print('{:d} antennas built'.format(built.shape[0]))
+    
     
 
-    #if show_plot:
-        
-    n_not_fulfilled_array = [n_not_fulfilled]
-    grid_points_left_array = []
+    # if starting from zero, do the first iteration, which is trivial
+    if starting_from_scratch:
+        built = np.vstack([built, commanded[0]])
+    else:
+        built_saved = np.copy(built)
     
-    while True:
+    
+    
+    success_whole_array = False
         
-        distances = np.linalg.norm(grid_points[:, None] - new_antpos.reshape(1,-1), axis=2)
-        within_distance = np.any(distances < diameter, axis=1)
-        grid_points = grid_points[~within_distance]
-        grid_points_left_array.append(grid_points.shape[0])
-
-
-        if built.shape[0]>1:
-            if try_fulfill:
-                _,n_not_fulfilled,fulfilled,_ = check_fulfillment(commanded,built,fulfill_tolerance)
-                n_not_fulfilled_array.append(n_not_fulfilled)
-        if built.shape[0]>=n and not try_fulfill:
-            print('Built the required number of antennas.')
-            break
-        elif grid_points.shape[0]==0:
-            print('No more grid points.')
-            print(f'{built.shape[0]} antennas placed, {n_not_fulfilled} commanded baselines yet to be fulfilled.')
-            break
-        elif n_not_fulfilled==0:
-            print('Fulfilled all commanded baselines.')
-            break
-        if built.shape[0]%10==0:
-            
-            if show_plot:
-                
-                clear_output(wait=True)
-                plt.pause(0.01)
-                
-                if try_fulfill:
-                    fig,ax = plt.subplots(1,3,figsize=(18,5))
-                    ax2_twin = ax[2].twinx()
-                    
-                    ax[0].plot(commanded[:,0],commanded[:,1],'.',color='k',alpha=0.15,label='Commanded antpos')
-                    ax[0].plot(fulfilled[:,0],fulfilled[:,1],'.',color='#00ff00',label='Fulfilled antpos')
-                    ax[0].set_title('uv plane')
-                    ax[0].set_xlabel(r'$u$')
-                    ax[0].set_ylabel(r'$v$')
-                    #ax[0].legend()
-                    ax[1].plot(built[:,0],built[:,1],'.',color='#aa00aa')
-                    ax[1].plot(grid_points[:,0],grid_points[:,1],'.',color='#00aa00')
-                    ax[1].set_title('Array')
-                    ax[1].set_xlabel('EW')
-                    ax[1].set_ylabel('NS')
-                    ax[2].plot(n_not_fulfilled_array,color='b')
-                    ax[2].set_ylabel('Remaining commanded uv points to fulfill',color='b')
-                    ax[2].set_xlabel('New antenna rank')
-                    ax[2].set_ylim([0,commanded.shape[0]])
-                    ax2_twin.plot(grid_points_left_array,color='r')
-                    ax2_twin.set_ylabel('Remaining grid points',color='r')
-                    ax2_twin.set_xlabel('New antenna rank')
-                    ax2_twin.set_ylim([0,grid_points_left_array[0]])
-                    
-                else:
-                    fig,ax = plt.subplots(1,2,figsize=(12,5))
-                    ax[0].plot(fulfilled[:,0],fulfilled[:,1],color='#00ff00',label='Fulfilled antpos')
-                    ax[0].set_title('uv plane')
-                    ax[0].set_xlabel(r'$u$')
-                    ax[0].set_ylabel(r'$v$')
-                    #ax[0].legend()
-                    ax[1].plot(built[:,0],built[:,1],'.',color='#aa00aa')
-                    ax[1].plot(grid_points[:,0],grid_points[:,1],'.',color='#00aa00')
-                    ax[1].set_title('Array')
-                    ax[1].set_xlabel('EW')
-                    ax[1].set_ylabel('NS')
-                for i in range(2):
-                    ax[i].set_aspect('equal', adjustable='box')
-                display(fig)
-            print(f'{built.shape[0]} antennas placed, {n_not_fulfilled} commanded baselines yet to be fulfilled, {grid_points.shape[0]} grid points left...')
-
-        i = int(round(np.random.uniform() * (grid_points.shape[0] - 1)))
-        if try_fulfill:
-            new_antpos_temp = grid_points[i]
-            built_temp = np.vstack([built,new_antpos_temp])
-            _,n_not_fulfilled_temp,_,_ = check_fulfillment(commanded,built_temp,fulfill_tolerance)
-            if n_not_fulfilled_temp < n_not_fulfilled:
-                new_antpos = new_antpos_temp
-                built = np.vstack([built,new_antpos])
+    n_loops = 0
+    while success_whole_array == False:
+        n_loops +=1
+        grid_points = np.copy(grid_points_saved)
+        if starting_from_scratch:
+            built = np.vstack(np.asarray([[0,0]]))
         else:
-            built = np.vstack([built,grid_points[i]])
+            built = np.copy(built_saved)
+        
+        
+        if len(built.shape)<2 or built.shape[0]<2:
+            remove_mask = np.linalg.norm(grid_points,axis=1)<diameter
+            grid_points = grid_points[~remove_mask]
+        else:
+            tree = cKDTree(built)
+            points_within_diameter = tree.query_ball_point(grid_points, r=diameter)
+            remove_mask = np.array([bool(idx) for idx in points_within_diameter])
+            grid_points = grid_points[~remove_mask]
+                    
 
+        n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
+        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
+        
+        grid_points_left_list = [grid_points.shape[0]]
+        while True:
+            if grid_points.shape[0]>1:
+                i = int(round(np.random.uniform() * (grid_points.shape[0] - 1)))
+                new_antpos = grid_points[i]
+            else:
+                new_antpos = grid_points[0]
+            if try_fulfill and not always_add:
+                n_new_fulfilled,new_fulfilled = get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
+                if n_new_fulfilled>0:
+                    built = np.vstack([built,new_antpos])
+                    distances = np.linalg.norm(grid_points[:, None] - new_antpos.reshape(1,-1), axis=2)
+                    within_distance = np.any(distances < diameter, axis=1)
+                    grid_points = grid_points[~within_distance]
+                    grid_points_left_list.append(grid_points.shape[0])
+                    n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)         
+                    n_new_fulfilled_list.append(n_new_fulfilled)
+                    n_not_fulfilled_list.append(n_not_fulfilled)
+                    new_fulfilled_list.append(new_fulfilled)  
+            else:
+                built = np.vstack([built,grid_points[i]])
+                distances = np.linalg.norm(grid_points[:, None] - new_antpos.reshape(1,-1), axis=2)
+                within_distance = np.any(distances < diameter, axis=1)
+                grid_points = grid_points[~within_distance]
+                grid_points_left_list.append(grid_points.shape[0])
+                if try_fulfill:
+                    n_new_fulfilled,new_fulfilled = get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
+                    n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)          
+                    n_new_fulfilled_list.append(n_new_fulfilled)
+                    n_not_fulfilled_list.append(n_not_fulfilled)
+                    new_fulfilled_list.append(new_fulfilled) 
+            
+            if built.shape[0]>=n and not try_fulfill:
+                print('Built the required number of antennas.')
+                success_whole_array = True
+                break
+            elif n_not_fulfilled==0:
+                print('Fulfilled all commanded baselines.')
+                success_whole_array = True
+                break
+            
+            elif grid_points.shape[0]<=1:
+                print('No more grid points.')
+                print(f'{built.shape[0]} antennas placed, {n_not_fulfilled} commanded baselines yet to be fulfilled.')
+                break
+            if built.shape[0]%10==0 or grid_points.shape[0]<20 and verbose:
+                
+                if show_plot:
+                    clear_output(wait=True)
+                    #plt.pause(0.01)
+                    fig,ax=plot_array(built,commanded,fulfill_tolerance,just_plot_array=just_plot_array,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
+                    display(fig)
+                print(f'On loop {n_loops}')
+                print('{:d} newly fulfilled points'.format(n_new_fulfilled))
+                print('{:d} total antennas built'.format(built.shape[0]))
+                print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+                print(f'{grid_points.shape[0]} grid points left...')
     
+            
+    
+        
     print('Array size is now: {:.2f} wavelengths'.format(get_array_size(built)))
     print('{:d} total antennas built'.format(built.shape[0]))
     if try_fulfill:

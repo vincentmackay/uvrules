@@ -38,7 +38,6 @@ def get_new_fulfilled_list(commanded, built, fulfill_tolerance):
                 new_fulfilled_list.append(new_fulfilled_temp)
                 _, n_not_fulfilled_temp, _, not_fulfilled_temp = check_fulfillment(not_fulfilled_temp,built_temp, fulfill_tolerance)
                 n_not_fulfilled_list.append(n_not_fulfilled_temp)
-            print('Done, adding the remaining antennas.')
     return n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list
 
 def plot_array(built, commanded = None, fulfill_tolerance = 0.5, just_plot_array = True,fig=None,ax=None,n_new_fulfilled_list = None,n_not_fulfilled_list = None,new_fulfilled_list = None, fulfilled = None, not_fulfilled = None):
@@ -164,22 +163,26 @@ def get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance,p_norm = 
 def check_fulfillment(commanded, built, fulfill_tolerance, p_norm = np.inf):
     # Returns the number of fulfilled and unfulfilled points, along with the corresponding arrays
 
-    built_uvs = antpos_to_uv(built)
+    if len(built.shape)<2 or built.shape[0]<2:
+        return 0, commanded.shape[0], np.array([]), commanded
     
-    # Build a KD-tree for built_uvs
-    tree = cKDTree(built_uvs)
+    else:
+        built_uvs = antpos_to_uv(built)
+        
+        # Build a KD-tree for built_uvs
+        tree = cKDTree(built_uvs)
+        
+        # Find indices of commanded points that are within the threshold distance of points in built_uvs
+        idx_fulfilled = tree.query_ball_point(commanded, r=fulfill_tolerance, p = p_norm)
+        
+        # Determine which points in commanded are close to any in built_uvs
+        fulfilled_mask = np.asarray([bool(idx) for idx in idx_fulfilled])
     
-    # Find indices of commanded points that are within the threshold distance of points in built_uvs
-    idx_fulfilled = tree.query_ball_point(commanded, r=fulfill_tolerance, p = p_norm)
-    
-    # Determine which points in commanded are close to any in built_uvs
-    fulfilled_mask = np.asarray([bool(idx) for idx in idx_fulfilled])
-
-    # Determine far antpos as those not close to any point in built_uvs
-    fulfilled = commanded[fulfilled_mask]
-    not_fulfilled = commanded[~fulfilled_mask]
-    
-    return fulfilled.shape[0], not_fulfilled.shape[0], fulfilled, not_fulfilled
+        # Determine far antpos as those not close to any point in built_uvs
+        fulfilled = commanded[fulfilled_mask]
+        not_fulfilled = commanded[~fulfilled_mask]
+        
+        return fulfilled.shape[0], not_fulfilled.shape[0], fulfilled, not_fulfilled
 
 
 def antpos_to_uv(antpos):
