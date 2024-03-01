@@ -10,38 +10,73 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from IPython.display import clear_output, display
-from uvComplete.utils import check_fulfillment, get_array_size, get_n_new_fulfilled
+from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_new_fulfilled_list,plot_array
 
 
-def create_array_random(n=200, commanded = -1, diameter=8.54,max_array_size=300, fulfill_tolerance = 0.5, show_plot = True, show_plot_skip = 10, verbose = True,max_failed_attempts = 100000, random_seed = 11141):
+def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_array_size=300, fulfill_tolerance = 0.5, always_add = False, show_plot = True, show_plot_skip = 10, verbose = True,max_failed_attempts = 1e5, random_seed = 11141):
     # Initialize built array with a single random point
     np.random.seed(random_seed)
+    n_loops = 1
     
     if show_plot:
         fig,ax = plt.subplots(1,3,figsize=(15,5))
     
-    if isinstance(commanded, np.ndarray):
+    if commanded is not None:
         try_fulfill = True
         n_not_fulfilled = commanded.shape[0]
-    elif isinstance(commanded, int):
+    else:
+        print(f'No commanded points passed, just generating a random array of {n} points.')
         try_fulfill = False
         n_not_fulfilled = -1
-    else:
-        raise ValueError("Incorrect value for commanded")
+        
     success_whole_array = False
-    newly_fulfilled_points = []
+    
+    
+    
+    
+    if built is not None:
+        built = np.asarray(built)
+        starting_from_scratch = False
+        
+        if not (built.shape == (2,) or (len(built.shape) == 2 and built.shape[1] == 2)):
+            print('Incorrect passed built array, using [0,0].')
+            built = np.asarray([0,0])
+            starting_from_scratch = True
+    else:
+        built = np.asarray([0,0])
+        starting_from_scratch = True    
+
+    
+    if verbose:
+        print('Before even beginning, have:')
+        print('{:d} antennas built'.format(built.shape[0]))
+    
+    
+
+    # if starting from zero, do the first iteration, which is trivial
+    if starting_from_scratch:
+        built = np.vstack([built, commanded[0]])
+    else:
+        built_saved = np.copy(built)
+    
+    
+    
+    
+    
     printout_condition=False
     while success_whole_array==False:
+        if starting_from_scratch:
+            built = np.asarray([0,0])
+            built = np.vstack([built, commanded[0]])
+        else:
+            built = built_saved
         
-        
-        
-            
-        built = np.asarray([[0,0]])
+        n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
+        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
         tree = cKDTree(built)
         
         while True:
-            
-            
+                        
             n_not_fulfilled = 0
             if not try_fulfill:
                 if built.shape[0]>=n:
@@ -59,28 +94,22 @@ def create_array_random(n=200, commanded = -1, diameter=8.54,max_array_size=300,
                 printout_condition = built.shape[0]%10==0 or (not_fulfilled.shape[0]<1000)
             while not success_new_dish:
                 # Generate a new antpos at a random direction and distance
-                angle = np.random.uniform(0, 2*np.pi)
-                distance = np.random.uniform(diameter, max_array_size/2)
-                new_antpos = np.asarray([np.cos(angle) * distance, np.sin(angle) * distance])
-                if tree.query(new_antpos)[0] >= diameter:
+                
+                new_antpos = np.asarray([(2*np.random.random()-1)*max_array_size/2, (2*np.random.random()-1)*max_array_size/2])
+                if tree.query(new_antpos)[0] >= diameter and np.linalg.norm(new_antpos)<=max_array_size/2:
                     # Add the new antpos if it passes all checks and we're at the beginning
-                    if built.shape[0]<=1 or n_not_fulfilled == 0:
-                        if try_fulfill and built.shape[0]>1:
-                            newly_fulfilled_points.append(get_n_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance))
-                        built = np.vstack([built, new_antpos])
-                        tree = cKDTree(built)  # Rebuild KDTree with the new antpos
+                
+                    n_new_fulfilled,new_fulfilled = get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
+                    if n_new_fulfilled>0 or not try_fulfill or not always_add:
+                        # Rebuild KDTree with the new antpos
                         success_new_dish = True
                         n_failed_attempts = 0
-                    else:
-                        built_temp = np.vstack([built,new_antpos])
-                        _, n_not_fulfilled_temp,_,_ = check_fulfillment(commanded,built_temp,fulfill_tolerance)
-                        if n_not_fulfilled_temp<n_not_fulfilled or not try_fulfill:
-                            if try_fulfill and built.shape[0]>1:
-                                newly_fulfilled_points.append(get_n_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance))
-                            built = np.vstack([built, new_antpos])
-                            tree = cKDTree(built)  # Rebuild KDTree with the new antpos
-                            success_new_dish = True
-                            n_failed_attempts = 0
+                        built = np.vstack([built,new_antpos])
+                        n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)       
+                        n_new_fulfilled_list.append(n_new_fulfilled)
+                        n_not_fulfilled_list.append(n_not_fulfilled)
+                        new_fulfilled_list.append(new_fulfilled)
+                        tree = cKDTree(built)
                 else:
                     n_failed_attempts+=1
                     if n_failed_attempts>0 and n_failed_attempts % 100000 == 0:
@@ -88,6 +117,7 @@ def create_array_random(n=200, commanded = -1, diameter=8.54,max_array_size=300,
 
                 if n_failed_attempts >= max_failed_attempts:
                     print(f"Maximum number of failed attempts reached ({max_failed_attempts}), no spot for new dish found, starting over.")
+                    n_loops += 1
                     break
 
             
@@ -102,35 +132,19 @@ def create_array_random(n=200, commanded = -1, diameter=8.54,max_array_size=300,
             if show_plot and built.shape[0]%show_plot_skip==0:
                 clear_output(wait=True)
                 #plt.pause(0.01)
-                #built_uvs = antpos_to_uv(built)
-                ax[0].plot(commanded[:,0],commanded[:,1],'.',color='k',alpha=0.15,label='Commanded points')
-                ax[0].plot(fulfilled[:,0],fulfilled[:,1],'.',color='#00ff00',label='Fulfilled points')
-                ax[0].set_title('uv plane')
-                ax[0].set_xlabel(r'$u$')
-                ax[0].set_ylabel(r'$v$')
-                #ax[0].legend()
-                ax[1].plot(built[:,0],built[:,1],'.',color='k')
-                ax[1].set_title('Array')
-                ax[1].set_xlabel('EW')
-                ax[1].set_ylabel('NS')
-                ax[2].plot(range(len(newly_fulfilled_points)),newly_fulfilled_points,color='k')
-                ax[2].set_ylabel('Number of newly fulfilled points')
-                ax[2].set_xlabel('New antenna rank')
-                ax[2].grid()
-                for i in range(2):
-                    ax[i].set_aspect('equal', adjustable='box')
-                #if built.shape[0]%10==0:
+                fig,ax=plot_array(built,commanded,fulfill_tolerance,just_plot_array=False,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
                 display(fig)
             if verbose and show_plot and built.shape[0]%show_plot_skip==0:
-                n_newly_fulfilled = newly_fulfilled_points[-1]
-                print('{:d} newly fulfilled points'.format(n_newly_fulfilled))
+                n_new_fulfilled = n_new_fulfilled_list[-1]
+                print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                 print('{:d} total antennas built'.format(built.shape[0]))
                 print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+                print(f'On loop {n_loops}.')
             if verbose and not show_plot:
                 if printout_condition:
                     clear_output(wait=True)
-                    n_newly_fulfilled = newly_fulfilled_points[-1]
-                    print('{:d} newly fulfilled points'.format(n_newly_fulfilled))
+                    n_new_fulfilled = new_fulfilled_list[-1]
+                    print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                     print('{:d} total antennas built'.format(built.shape[0]))
                     print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
                     
@@ -139,6 +153,7 @@ def create_array_random(n=200, commanded = -1, diameter=8.54,max_array_size=300,
     print('Done.')
     print('Array size is now: {:.2f} wavelengths'.format(get_array_size(built)))
     print('{:d} total antennas built'.format(built.shape[0]))
+    print(f'It took {n_loops} loops to complete the array.')
     if try_fulfill:
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built,fulfill_tolerance)
         print('{:d}/{:d} commanded points remain to be fulfilled'.format(n_not_fulfilled,commanded.shape[0]))

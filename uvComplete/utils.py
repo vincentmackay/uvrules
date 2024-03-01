@@ -9,7 +9,6 @@ Created on Thu Feb 15 12:27:51 2024
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.spatial.distance import pdist
 from scipy.spatial import cKDTree
 import itertools
@@ -31,7 +30,6 @@ def get_new_fulfilled_list(commanded, built, fulfill_tolerance):
             n_new_fulfilled_list.append(n_new_fulfilled_temp)
             new_fulfilled_list.append(new_fulfilled_temp)
         elif built.shape[0]>2:
-            print('Computing the newly fulfilled points array of the already-built array...')
             not_fulfilled_temp = np.copy(commanded)
             for i in range(built.shape[0])[3:]:
                 built_temp = built[:i-1]
@@ -68,7 +66,8 @@ def plot_array(built, commanded = None, fulfill_tolerance = 0.5, just_plot_array
         colormap = cm.viridis
         ax[0].plot(commanded[:,0],commanded[:,1],'.',markersize=2,color='k',alpha=1,label='Commanded points',zorder=0)
         for i,new_fulfilled in enumerate(new_fulfilled_list):
-            ax[0].plot(new_fulfilled[:,0],new_fulfilled[:,1],'.',markersize=2,color=colormap(i/len(new_fulfilled_list)),zorder=1)
+            if len(new_fulfilled.shape)>1:
+                ax[0].plot(new_fulfilled[:,0],new_fulfilled[:,1],'.',markersize=2,color=colormap(i/len(new_fulfilled_list)),zorder=1)
         #ax[0].scatter(fulfilled[:,0],fulfilled[:,1],c=colors_fulfilled,s=1,zorder=1)#,label='Fulfilled points')
         ax[0].set_title('uv plane')
         ax[0].set_xlabel(r'$u$')

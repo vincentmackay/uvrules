@@ -59,6 +59,8 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
     if check_all_built and check_all_not_fulfilled:
         print("It is not recommended to have both check_all_built and check_all_not_fulfilled set to True, this will take weeks. Use the parallelized create_array_rules_parallelized instead.")
     
+    skip_built = (check_first == 'not_fulfilled' and not check_all_built and not check_all_not_fulfilled)
+    i_skip = 0
     
     while(not_fulfilled.shape[0]>=1):
         if built.shape[0]==n_max_antennas:
@@ -83,7 +85,7 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
         
         
         # iterate over all combinations of built antennas and unfulfilled uv point
-        for i in range(outer_loop.shape[0]):
+        for i in range(outer_loop.shape[0])[skip_built*i_skip:]:
             # iterate over all the not fulfilled baselines
             for j in range(inner_loop.shape[0]):
                 # try both the positive and negative position
@@ -129,6 +131,8 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
                                         favored_new_antpos = new_antpos
                                         min_built_size = built_temp_size
                         if check_first == 'built' and not check_all_built:
+                            if skip_built:
+                                i_skip = i
                             break # breaks out of the flips loop
                         if check_first == 'not_fulfilled' and not check_all_not_fulfilled:
                             break # breaks out of the flips loop
