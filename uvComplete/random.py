@@ -158,7 +158,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
             min_not_fulfilled = n_not_fulfilled
             min_not_fulfilled_temp = min_not_fulfilled
             best_loop = i_loop
-            return built
+            np.save('built_random_'+always_add*'_aa_'+'.npy',built)
                     
 
             
@@ -173,7 +173,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
     return built
 
 
-def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.54, max_array_size=300, fulfill_tolerance=0.5,always_add = False, n_side_mesh=1000,show_plot = True,verbose = True,random_seed = 11141):
+def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.54, max_array_size=300, fulfill_tolerance=0.5,always_add = False, max_trials_for_new_fulfill = 10, n_side_mesh=1000,show_plot = True,verbose = True,random_seed = 11141):
 
     np.random.seed(random_seed)
     
@@ -271,7 +271,9 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
         n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
         
         grid_points_left_list = [grid_points.shape[0]]
+        n_trials_for_new_fulfill = 0
         while True:
+            
             if grid_points.shape[0]>1:
                 i = int(round(np.random.uniform() * (grid_points.shape[0] - 1)))
                 new_antpos = grid_points[i]
@@ -279,7 +281,11 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                 new_antpos = grid_points[0]
             if try_fulfill and not always_add:
                 n_new_fulfilled,new_fulfilled = get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
-                if n_new_fulfilled>0:
+                if n_new_fulfilled>0 or (n_trials_for_new_fulfill > 10 and max_trials_for_new_fulfill != -1):
+                    if n_trials_for_new_fulfill > 10:
+                        print(f"Couldn't fulfill a new commanded uv point after {n_trials_for_new_fulfill}, adding the antenna anyway.")
+                    if n_trials_for_new_fulfill > 0:
+                        print(f"On attempt {n_trials_for_new_fulfill} to fulfill a new commanded uv point...")
                     built = np.vstack([built,new_antpos])
                     distances = np.linalg.norm(grid_points[:, None] - new_antpos.reshape(1,-1), axis=2)
                     within_distance = np.any(distances < diameter, axis=1)
@@ -292,6 +298,8 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     if n_not_fulfilled < min_not_fulfilled_temp:
                         min_not_fulfilled_temp = n_not_fulfilled
                         best_loop = i_loop
+                else:
+                    n_trials_for_new_fulfill +=1
             else:
                 built = np.vstack([built,grid_points[i]])
                 distances = np.linalg.norm(grid_points[:, None] - new_antpos.reshape(1,-1), axis=2)
@@ -340,7 +348,7 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
             min_not_fulfilled = n_not_fulfilled
             min_not_fulfilled_temp = min_not_fulfilled
             best_loop = i_loop
-            return built
+            np.save('built_random_grid'+always_add*'_aa_'+'.npy',built)
         
     print('Array size is now: {:.2f} wavelengths'.format(get_array_size(built)))
     print('{:d} total antennas built'.format(built.shape[0]))
