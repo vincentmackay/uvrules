@@ -16,7 +16,7 @@ from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfille
 def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_array_size=300, fulfill_tolerance = 0.5, always_add = False, show_plot = True, show_plot_skip = 10, verbose = True,max_failed_attempts = 1e5, random_seed = 11141):
     # Initialize built array with a single random point
     np.random.seed(random_seed)
-    n_loops = 1
+    i_loop = 1
     
     if show_plot:
         fig,ax = plt.subplots(1,3,figsize=(15,5))
@@ -24,6 +24,9 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
     if commanded is not None:
         try_fulfill = True
         n_not_fulfilled = commanded.shape[0]
+        min_not_fulfilled = n_not_fulfilled
+        min_not_fulfilled_temp = min_not_fulfilled
+        best_loop = 0
     else:
         print(f'No commanded points passed, just generating a random array of {n} points.')
         try_fulfill = False
@@ -107,6 +110,9 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                         n_new_fulfilled_list.append(n_new_fulfilled)
                         n_not_fulfilled_list.append(n_not_fulfilled)
                         new_fulfilled_list.append(new_fulfilled)
+                        if n_not_fulfilled < min_not_fulfilled_temp:
+                            min_not_fulfilled_temp = n_not_fulfilled
+                            best_loop = i_loop
                         tree = cKDTree(built)
                 else:
                     n_failed_attempts+=1
@@ -115,7 +121,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
 
                 if n_failed_attempts >= max_failed_attempts:
                     print(f"Maximum number of failed attempts reached ({max_failed_attempts}), no spot for new dish found, starting over.")
-                    n_loops += 1
+                    i_loop += 1
                     break
 
             
@@ -137,7 +143,8 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                 print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                 print('{:d} total antennas built'.format(built.shape[0]))
                 print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
-                print(f'On loop {n_loops}.')
+                print(f'On loop {i_loop}.')
+                print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled_temp}/{commanded.shape[0]} only left to be fulfilled.')
             if verbose and not show_plot:
                 if printout_condition:
                     clear_output(wait=True)
@@ -145,13 +152,20 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                     print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                     print('{:d} total antennas built'.format(built.shape[0]))
                     print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+                    print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled_temp}/{commanded.shape[0]} only left to be fulfilled.')
+                    
+        if n_not_fulfilled < min_not_fulfilled:
+            min_not_fulfilled = n_not_fulfilled
+            min_not_fulfilled_temp = min_not_fulfilled
+            best_loop = i_loop
+            return built
                     
 
             
     print('Done.')
     print('Array size is now: {:.2f} wavelengths'.format(get_array_size(built)))
     print('{:d} total antennas built'.format(built.shape[0]))
-    print(f'It took {n_loops} loops to complete the array.')
+    print(f'It took {i_loop} loops to complete the array.')
     if try_fulfill:
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built,fulfill_tolerance)
         print('{:d}/{:d} commanded points remain to be fulfilled'.format(n_not_fulfilled,commanded.shape[0]))
@@ -190,6 +204,9 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
         try_fulfill = True
         just_plot_array = False
         n_not_fulfilled = commanded.shape[0]
+        min_not_fulfilled = n_not_fulfilled
+        min_not_fulfilled_temp = min_not_fulfilled
+        best_loop = 0
     else:
         print(f'No commanded points passed, just generating a random array of {n} points.')
         try_fulfill = False
@@ -227,9 +244,12 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
     
     success_whole_array = False
         
-    n_loops = 0
+    i_loop = 0
+    
+    
     while success_whole_array == False:
-        n_loops +=1
+        i_loop +=1
+        
         grid_points = np.copy(grid_points_saved)
         if starting_from_scratch:
             built = np.vstack(np.asarray([[0,0]]))
@@ -269,6 +289,9 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     n_new_fulfilled_list.append(n_new_fulfilled)
                     n_not_fulfilled_list.append(n_not_fulfilled)
                     new_fulfilled_list.append(new_fulfilled)  
+                    if n_not_fulfilled < min_not_fulfilled_temp:
+                        min_not_fulfilled_temp = n_not_fulfilled
+                        best_loop = i_loop
             else:
                 built = np.vstack([built,grid_points[i]])
                 distances = np.linalg.norm(grid_points[:, None] - new_antpos.reshape(1,-1), axis=2)
@@ -281,6 +304,9 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     n_new_fulfilled_list.append(n_new_fulfilled)
                     n_not_fulfilled_list.append(n_not_fulfilled)
                     new_fulfilled_list.append(new_fulfilled) 
+                    if n_not_fulfilled < min_not_fulfilled_temp:
+                        min_not_fulfilled_temp = n_not_fulfilled
+                        best_loop = i_loop
             
             if built.shape[0]>=n and not try_fulfill:
                 print('Built the required number of antennas.')
@@ -302,18 +328,23 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     #plt.pause(0.01)
                     fig,ax=plot_array(built,commanded,fulfill_tolerance,just_plot_array=just_plot_array,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
                     display(fig)
-                print(f'On loop {n_loops}')
+                print(f'On loop {i_loop}')
                 print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                 print('{:d} total antennas built'.format(built.shape[0]))
                 print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
                 print(f'{grid_points.shape[0]} grid points left...')
+                print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled_temp}/{commanded.shape[0]} only left to be fulfilled.')
     
             
-    
+        if n_not_fulfilled < min_not_fulfilled:
+            min_not_fulfilled = n_not_fulfilled
+            min_not_fulfilled_temp = min_not_fulfilled
+            best_loop = i_loop
+            return built
         
     print('Array size is now: {:.2f} wavelengths'.format(get_array_size(built)))
     print('{:d} total antennas built'.format(built.shape[0]))
     if try_fulfill:
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built,fulfill_tolerance)
         print('{:d}/{:d} commanded points remain to be fulfilled'.format(n_not_fulfilled,commanded.shape[0]))
-    return built , grid_points
+    return built
