@@ -25,7 +25,6 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
         try_fulfill = True
         n_not_fulfilled = commanded.shape[0]
         min_not_fulfilled = n_not_fulfilled
-        min_not_fulfilled_temp = min_not_fulfilled
         best_loop = 0
     else:
         print(f'No commanded points passed, just generating a random array of {n} points.')
@@ -66,6 +65,8 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
     
     printout_condition=False
     while success_whole_array==False:
+        
+        
         if starting_from_scratch:
             built = np.asarray([0,0])
             built = np.vstack([built, commanded[0]])
@@ -110,8 +111,8 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                         n_new_fulfilled_list.append(n_new_fulfilled)
                         n_not_fulfilled_list.append(n_not_fulfilled)
                         new_fulfilled_list.append(new_fulfilled)
-                        if n_not_fulfilled < min_not_fulfilled_temp:
-                            min_not_fulfilled_temp = n_not_fulfilled
+                        if n_not_fulfilled < min_not_fulfilled:
+                            min_not_fulfilled = n_not_fulfilled
                             best_loop = i_loop
                         tree = cKDTree(built)
                 else:
@@ -144,7 +145,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                 print('{:d} total antennas built'.format(built.shape[0]))
                 print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
                 print(f'On loop {i_loop}.')
-                print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled_temp}/{commanded.shape[0]} only left to be fulfilled.')
+                print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled}/{commanded.shape[0]} only left to be fulfilled.')
             if verbose and not show_plot:
                 if printout_condition:
                     clear_output(wait=True)
@@ -152,11 +153,10 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                     print('{:d} newly fulfilled points'.format(n_new_fulfilled))
                     print('{:d} total antennas built'.format(built.shape[0]))
                     print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
-                    print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled_temp}/{commanded.shape[0]} only left to be fulfilled.')
+                    print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled}/{commanded.shape[0]} only left to be fulfilled.')
                     
-        if n_not_fulfilled < min_not_fulfilled:
+        if n_not_fulfilled <= min_not_fulfilled:
             min_not_fulfilled = n_not_fulfilled
-            min_not_fulfilled_temp = min_not_fulfilled
             best_loop = i_loop
             np.save('built_random_'+always_add*'_aa_'+'.npy',built)
                     
@@ -205,7 +205,6 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
         just_plot_array = False
         n_not_fulfilled = commanded.shape[0]
         min_not_fulfilled = n_not_fulfilled
-        min_not_fulfilled_temp = min_not_fulfilled
         best_loop = 0
     else:
         print(f'No commanded points passed, just generating a random array of {n} points.')
@@ -248,6 +247,7 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
     
     
     while success_whole_array == False:
+        
         i_loop +=1
         
         grid_points = np.copy(grid_points_saved)
@@ -295,8 +295,8 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     n_new_fulfilled_list.append(n_new_fulfilled)
                     n_not_fulfilled_list.append(n_not_fulfilled)
                     new_fulfilled_list.append(new_fulfilled)  
-                    if n_not_fulfilled < min_not_fulfilled_temp:
-                        min_not_fulfilled_temp = n_not_fulfilled
+                    if n_not_fulfilled < min_not_fulfilled:
+                        min_not_fulfilled = n_not_fulfilled
                         best_loop = i_loop
                 else:
                     n_trials_for_new_fulfill +=1
@@ -312,8 +312,8 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     n_new_fulfilled_list.append(n_new_fulfilled)
                     n_not_fulfilled_list.append(n_not_fulfilled)
                     new_fulfilled_list.append(new_fulfilled) 
-                    if n_not_fulfilled < min_not_fulfilled_temp:
-                        min_not_fulfilled_temp = n_not_fulfilled
+                    if n_not_fulfilled < min_not_fulfilled:
+                        min_not_fulfilled = n_not_fulfilled
                         best_loop = i_loop
             
             if built.shape[0]>=n and not try_fulfill:
@@ -341,12 +341,11 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                 print('{:d} total antennas built'.format(built.shape[0]))
                 print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
                 print(f'{grid_points.shape[0]} grid points left...')
-                print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled_temp}/{commanded.shape[0]} only left to be fulfilled.')
+                print(f'Best loop is still loop {best_loop}, with {min_not_fulfilled}/{commanded.shape[0]} only left to be fulfilled.')
     
             
-        if n_not_fulfilled < min_not_fulfilled:
+        if n_not_fulfilled <= min_not_fulfilled:
             min_not_fulfilled = n_not_fulfilled
-            min_not_fulfilled_temp = min_not_fulfilled
             best_loop = i_loop
             np.save('built_random_grid'+always_add*'_aa_'+'.npy',built)
         
