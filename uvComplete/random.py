@@ -271,9 +271,9 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
         n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
         
         grid_points_left_list = [grid_points.shape[0]]
-        n_trials_for_new_fulfill = 0
+        
         while True:
-            
+            n_trials_for_new_fulfill = 0
             if grid_points.shape[0]>1:
                 i = int(round(np.random.uniform() * (grid_points.shape[0] - 1)))
                 new_antpos = grid_points[i]
