@@ -207,7 +207,7 @@ def antpos_to_uv(antpos):
     return np.asarray(uv_points)
 
 def generate_uv_grid(uv_cell_size=1., min_u=-100, max_u=100, min_v=0, max_v=100, min_bl=10, max_bl=100, show_plot = True):
-    # Returns a grid of antpos in a half annulus, without the (u<0,v=0) segment
+    # Returns a grid of uv points in a half annulus, without the (u<0,v=0) segment
     
     uv_points = []
     for u in np.arange(min_u, max_u + uv_cell_size, uv_cell_size):
@@ -227,4 +227,33 @@ def generate_uv_grid(uv_cell_size=1., min_u=-100, max_u=100, min_v=0, max_v=100,
         ax.set_ylim(min_v-1, max_v+1)
         ax.grid()
     return uv_points
+
+
+def generate_uv_random(uv_cell_size, r_min, r_max, fulfill_tolerance):
+    # Returns a grid of uv points in a half annulus, randomly distributed.
+    # Calculate the area of the half-ring
+    area_half_ring = 0.5 * np.pi * (r_max**2 - r_min**2)
+    area_per_point = np.pi * (uv_cell_size/2)**2
+    n_points = area_half_ring / area_per_point
+    density = n_points / area_half_ring
+
+    # Calculate the number of points based on the density and area
+    n = int(area_half_ring * density)
+
+    points = []
+    while len(points) < n:
+        # Generate a new point uniformly distributed by area
+        u = np.random.uniform(0, 1)
+        r = np.sqrt(r_min**2 + (r_max**2 - r_min**2) * u)
+        theta = np.random.uniform(0, np.pi)
+
+        # Convert polar coordinates to Cartesian coordinates
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+
+        # Check if the new point satisfies the distance constraint
+        if len(points) == 0 or all(np.linalg.norm(np.array(points) - [x, y], axis=1) >= fulfill_tolerance):
+            points.append([x, y])
+
+    return np.array(points)
 

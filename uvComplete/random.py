@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from IPython.display import clear_output, display
-from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_new_fulfilled_list,plot_array
+from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_new_fulfilled_list,plot_array,collision_check
 
 
 def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_array_size=300, fulfill_tolerance = 0.5, always_add = False, show_plot = True, show_plot_skip = 10, verbose = True,max_failed_attempts = 1e5, random_seed = 11141):
@@ -55,7 +55,12 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
 
     # if starting from zero, do the first iteration, which is trivial
     if starting_from_scratch:
-        built = np.vstack([built, commanded[0]])
+        if try_fulfill:
+            built = np.vstack([built, commanded[0]])
+        else:
+            rand_u = np.random.uniform(diameter,max_array_size)
+            rand_v = np.random.uniform(diameter,max_array_size)
+            built = np.vstack([built, np.asarray([rand_u,rand_v])])
     else:
         built_saved = np.copy(built)
     
@@ -68,8 +73,12 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
         
         
         if starting_from_scratch:
-            built = np.asarray([0,0])
-            built = np.vstack([built, commanded[0]])
+            if try_fulfill:
+                built = np.vstack([built, commanded[0]])
+            else:
+                rand_u = np.random.uniform(diameter,max_array_size)
+                rand_v = np.random.uniform(diameter,max_array_size)
+                built = np.vstack([built, np.asarray([rand_u,rand_v])])
         else:
             built = built_saved
         
@@ -158,7 +167,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
         if n_not_fulfilled <= min_not_fulfilled:
             min_not_fulfilled = n_not_fulfilled
             best_loop = i_loop
-            np.save('built_random_'+always_add*'_aa_'+'.npy',built)
+            np.save('built_random'+always_add*'_aa_'+'.npy',built)
                     
 
             
@@ -354,4 +363,57 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
     if try_fulfill:
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built,fulfill_tolerance)
         print('{:d}/{:d} commanded points remain to be fulfilled'.format(n_not_fulfilled,commanded.shape[0]))
+    return built
+
+
+def create_array_truly_random(n=200, diameter=8.54,max_array_size=300, show_plot = True, show_plot_skip = 10, verbose = True, random_seed = 11141):
+    # Initialize built array with a single random point
+    np.random.seed(random_seed)
+      
+    if show_plot:
+        fig,ax = plt.subplots(1,1,figsize=(5,5))
+    
+
+    built = np.asarray([0,0])
+    rand_u = np.random.uniform(diameter,max_array_size)
+    rand_v = np.random.uniform(diameter,(max_array_size**2 - rand_u**2)**.5)
+    built = np.vstack([built, np.asarray([rand_u,rand_v])])
+    
+    if verbose:
+        print('Before even beginning, have:')
+        print('{:d} antennas built'.format(built.shape[0]))
+    
+    
+
+    while True:
+                    
+
+        if built.shape[0]>=n:
+            break
+        else:
+            tree = cKDTree(built)
+            rand_u = np.random.uniform(-max_array_size,max_array_size)
+            rand_v = np.random.uniform(-max_array_size,max_array_size)
+            new_antpos = np.asarray([rand_u,rand_v])
+            if tree.query(new_antpos)[0] >= diameter and np.linalg.norm(new_antpos)<=max_array_size/2 and not collision_check(np.vstack([built,new_antpos]),diameter):
+                built = np.vstack([built,new_antpos])
+        
+        
+        
+        if show_plot and built.shape[0]%show_plot_skip==0:
+            clear_output(wait=True)
+            #plt.pause(0.01)
+            fig,ax=plot_array(built,just_plot_array=True)
+            display(fig)
+        if verbose and show_plot and built.shape[0]%show_plot_skip==0:
+           print('{:d} total antennas built'.format(built.shape[0]))
+        if verbose and not show_plot:
+                print('{:d} total antennas built'.format(built.shape[0]))
+
+
+        
+    print('Done.')
+    print('Array size is now: {:.2f} wavelengths'.format(get_array_size(built)))
+    print('{:d} total antennas built'.format(built.shape[0]))
+    plt.close()
     return built

@@ -17,7 +17,7 @@ from multiprocessing import Pool
 class ExitLoopsException(Exception):
     pass
 
-def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 300, fulfill_tolerance = 0.5, order = -1, show_plot = True, save_file = False,save_name='rules', verbose = True, n_max_antennas = -1,within_bounds = False, check_first = 'built', check_all_built = True, check_all_not_fulfilled = False,show_plot_skip = 10, second_priority = 'array_size'):
+def create_array_rules(commanded, built=None, diameter = None, max_array_size = None, fulfill_tolerance = 0.5, order = -1, show_plot = True, save_file = False,save_name='rules', verbose = True, n_max_antennas = -1, within_bounds = False, check_first = 'built', check_all_built = True, check_all_not_fulfilled = False, next_built = 1, show_plot_skip = 10, second_priority = 'array_size'):
 
     
     if built is not None:
@@ -90,27 +90,55 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
             for j in range(inner_loop.shape[0]):
                 # try both the positive and negative position
                 for k in range(flips.shape[0]):
+                    diameter_pass = False
+                    array_size_pass = False
                     if check_first == 'built':
-                        new_antpos = inner_loop[j] + flips[k] * outer_loop[i]
+                        new_antpos = inner_loop[j*next_built] + flips[k] * outer_loop[i]
                     elif check_first == 'not_fulfilled':
-                        new_antpos = outer_loop[i] + flips[k] * inner_loop[j]
-                    if within_bounds:
-                        if np.linalg.norm(new_antpos)>max_array_size/2:
-                            continue
-                    
+                        new_antpos = outer_loop[i*next_built] + flips[k] * inner_loop[j]
+       
                     # try and add one antenna at the longest commanded-but-not-fulfilled distance from point i
                     built_temp = np.vstack([built,new_antpos]) # 50 us
     
+                    
+                    
+                    if diameter is None:
+                        diameter_pass = True
+                    else:
+                        diameter_pass = not collision_check(built_temp,diameter)
+                    
                     # check the size of the array
-                    built_temp_size = get_array_size(built_temp) #241 us
+                    if max_array_size is None:
+                        array_size_pass = True
+                        if check_all_built or check_all_not_fulfilled:
+                            built_temp_size = get_array_size(built_temp)
+                    else:
+                        if within_bounds:
+                            if np.linalg.norm(new_antpos)>max_array_size/2:
+                                continue
+                            else:
+                                array_size_pass = True
+                                if check_all_built or check_all_not_fulfilled:
+                                    built_temp_size = get_array_size(built_temp)
+                        else:
+                            built_temp_size = get_array_size(built_temp)
+                            array_size_pass = built_temp_size<max_array_size
                     
                     
                     # check if there's no collision and that we're still within max size
-                    if (not collision_check(built_temp,diameter)) and built_temp_size<max_array_size: #245 us
+                    if diameter_pass and array_size_pass: #245 us
                         success = True    
                         n_new_fulfilled,new_fulfilled = get_new_fulfilled(new_antpos,built,not_fulfilled,fulfill_tolerance)
                         min_distance_from_new_antpos = get_min_distance_from_new_antpos(built, new_antpos)
-                        if n_new_fulfilled > max_n_new_fulfilled:
+                        if check_first == 'built' and not check_all_built:
+                            if skip_built:
+                                i_skip = i
+                            favored_new_antpos = new_antpos
+                            break # breaks out of the flips loop
+                        elif check_first == 'not_fulfilled' and not check_all_not_fulfilled:
+                            favored_new_antpos = new_antpos
+                            break # breaks out of the flips loop
+                        elif n_new_fulfilled > max_n_new_fulfilled:
                             favored_new_antpos = new_antpos
                             max_n_new_fulfilled = n_new_fulfilled
                         elif n_new_fulfilled == max_n_new_fulfilled:
@@ -130,12 +158,7 @@ def create_array_rules(commanded, built=None, diameter = 8.54, max_array_size = 
                                     if built_temp_size < min_built_size:
                                         favored_new_antpos = new_antpos
                                         min_built_size = built_temp_size
-                        if check_first == 'built' and not check_all_built:
-                            if skip_built:
-                                i_skip = i
-                            break # breaks out of the flips loop
-                        if check_first == 'not_fulfilled' and not check_all_not_fulfilled:
-                            break # breaks out of the flips loop
+                        
                 if success == True:
                     if check_first == 'built' and not check_all_built:
                         break # breaks out of the inner loop
