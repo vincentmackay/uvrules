@@ -10,13 +10,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from IPython.display import clear_output, display
-from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_new_fulfilled_list,plot_array,collision_check
+from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_antpos_history,plot_array,collision_check
 
 
 def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_array_size=300, fulfill_tolerance = 0.5, always_add = False, show_plot = True, show_plot_skip = 10, verbose = True,max_failed_attempts = 1e5, random_seed = 11141):
     # Initialize built array with a single random point
     np.random.seed(random_seed)
-    i_loop = 1
+    i_loop = 0
     
     if show_plot:
         fig,ax = plt.subplots(1,3,figsize=(15,5))
@@ -33,9 +33,9 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
         
     success_whole_array = False
     
-    
     if built is not None:
         built = np.asarray(built)
+        built_saved = np.copy(built)
         starting_from_scratch = False
         
         if not (built.shape == (2,) or (len(built.shape) == 2 and built.shape[1] == 2)):
@@ -43,36 +43,18 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
             built = np.asarray([0,0])
             starting_from_scratch = True
     else:
-        built = np.asarray([0,0])
         starting_from_scratch = True    
 
-    
-    if verbose:
-        print('Before even beginning, have:')
-        print('{:d} antennas built'.format(built.shape[0]))
-    
-    
 
-    # if starting from zero, do the first iteration, which is trivial
-    if starting_from_scratch:
-        if try_fulfill:
-            built = np.vstack([built, commanded[0]])
-        else:
-            rand_u = np.random.uniform(diameter,max_array_size)
-            rand_v = np.random.uniform(diameter,max_array_size)
-            built = np.vstack([built, np.asarray([rand_u,rand_v])])
-    else:
-        built_saved = np.copy(built)
-    
-    
-    
-    
     
     printout_condition=False
     while success_whole_array==False:
         
-        
+        i_loop +=1
+        n_failed_attempts = 0
         if starting_from_scratch:
+            print('Starting from scratch with built = [0,0]...')
+            built = np.asarray([0,0])
             if try_fulfill:
                 built = np.vstack([built, commanded[0]])
             else:
@@ -83,7 +65,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
             built = built_saved
         
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
-        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
+        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, built, fulfill_tolerance)
         tree = cKDTree(built)
         
         while True:
@@ -130,8 +112,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                         print(f"Failed attempts: {n_failed_attempts}/{max_failed_attempts}")
 
                 if n_failed_attempts >= max_failed_attempts:
-                    print(f"Maximum number of failed attempts reached ({max_failed_attempts}), no spot for new dish found, starting over.")
-                    i_loop += 1
+                    print(f"Maximum number of failed attempts reached ({max_failed_attempts}), no spot for new dish found, starting over (breaking out of inner loop).")
                     break
 
             
@@ -139,6 +120,7 @@ def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_a
                 print(f"Generated {built.shape[0]}/{n} antennas...")
 
             if n_failed_attempts >= max_failed_attempts:
+                print(f"Maximum number of failed attempts reached ({max_failed_attempts}), no spot for new dish found, starting over (breaking out of outer loop).")
                 break
             
             
@@ -277,7 +259,7 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
                     
 
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment(commanded,built, fulfill_tolerance)
-        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_new_fulfilled_list(commanded, built, fulfill_tolerance)
+        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, built, fulfill_tolerance)
         
         grid_points_left_list = [grid_points.shape[0]]
         
@@ -366,49 +348,60 @@ def create_array_random_on_grid(n=0, commanded = None, built = None, diameter=8.
     return built
 
 
-def create_array_truly_random(n=200, diameter=8.54,max_array_size=300, show_plot = True, show_plot_skip = 10, verbose = True, random_seed = 11141):
+def create_array_truly_random(n=200, diameter=8.54,max_array_size=300, show_plot = True, show_plot_skip = 10, verbose = True, random_seed = 11141, max_failed_attempts = 100000):
     # Initialize built array with a single random point
     np.random.seed(random_seed)
-      
+    i_loop = 1
+    n_failed_attempts = 0
+    
     if show_plot:
         fig,ax = plt.subplots(1,1,figsize=(5,5))
     
-
-    built = np.asarray([0,0])
-    rand_u = np.random.uniform(diameter,max_array_size)
-    rand_v = np.random.uniform(diameter,(max_array_size**2 - rand_u**2)**.5)
-    built = np.vstack([built, np.asarray([rand_u,rand_v])])
-    
-    if verbose:
-        print('Before even beginning, have:')
-        print('{:d} antennas built'.format(built.shape[0]))
     
     
+    success_whole_array = False
 
-    while True:
-                    
-
-        if built.shape[0]>=n:
-            break
-        else:
-            tree = cKDTree(built)
-            rand_u = np.random.uniform(-max_array_size,max_array_size)
-            rand_v = np.random.uniform(-max_array_size,max_array_size)
-            new_antpos = np.asarray([rand_u,rand_v])
-            if tree.query(new_antpos)[0] >= diameter and np.linalg.norm(new_antpos)<=max_array_size/2 and not collision_check(np.vstack([built,new_antpos]),diameter):
-                built = np.vstack([built,new_antpos])
+    while not success_whole_array:
         
+        built = np.asarray([0,0])
+        rand_u = np.random.uniform(diameter,max_array_size)
+        rand_v = np.random.uniform(diameter,(max_array_size**2 - rand_u**2)**.5)
+        built = np.vstack([built, np.asarray([rand_u,rand_v])])
         
+        if verbose:
+            print('Before even beginning, have:')
+            print('{:d} antennas built'.format(built.shape[0]))
         
-        if show_plot and built.shape[0]%show_plot_skip==0:
-            clear_output(wait=True)
-            #plt.pause(0.01)
-            fig,ax=plot_array(built,just_plot_array=True)
-            display(fig)
-        if verbose and show_plot and built.shape[0]%show_plot_skip==0:
-           print('{:d} total antennas built'.format(built.shape[0]))
-        if verbose and not show_plot:
-                print('{:d} total antennas built'.format(built.shape[0]))
+        while True:
+            if built.shape[0]>=n:
+                success_whole_array=True
+                break
+            else:
+                tree = cKDTree(built)
+                rand_u = np.random.uniform(-max_array_size,max_array_size)
+                rand_v = np.random.uniform(-max_array_size,max_array_size)
+                new_antpos = np.asarray([rand_u,rand_v])
+                if tree.query(new_antpos)[0] >= diameter and np.linalg.norm(new_antpos)<=max_array_size/2 and not collision_check(np.vstack([built,new_antpos]),diameter):
+                    built = np.vstack([built,new_antpos])
+                    if show_plot and built.shape[0]%show_plot_skip==0:
+                        clear_output(wait=True)
+                        #plt.pause(0.01)
+                        fig,ax=plot_array(built,just_plot_array=True)
+                        display(fig)
+                    if verbose and show_plot and built.shape[0]%show_plot_skip==0:
+                       print('{:d}: {:d} total antennas built'.format(i_loop,built.shape[0]))
+                    if verbose and not show_plot:
+                            print('{:d}: {:d} total antennas built'.format(i_loop,built.shape[0]))
+                else:
+                    if n_failed_attempts%1000==0:
+                        print(".",end='')
+                    n_failed_attempts += 1
+            if n_failed_attempts>=max_failed_attempts:
+                print(f'Max failed attempts reached ({max_failed_attempts}), starting over.')
+                n_failed_attempts = 0
+                i_loop+=1
+                clear_output(wait=True)
+                break
 
 
         
