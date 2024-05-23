@@ -728,6 +728,8 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
     
     starting_from_scratch, antpos = initialize_antpos(antpos)
 
+
+
     if verbose:
         total_start_time = time.time()
         print('Before even beginning, have:')
@@ -746,6 +748,10 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
 
     not_fulfilled = not_fulfilled[np.argsort(np.linalg.norm(not_fulfilled, axis=1))]
     flips = np.asarray([-1,1])
+    
+    if show_plot:
+        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, antpos, fulfill_tolerance)
+        
     
     ruled_out_antpos = np.asarray([0,0])
     while(not_fulfilled.shape[0]>=1 and n_added<n_to_add and antpos.shape[0]<n_max_antennas):
@@ -795,6 +801,10 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
         n_added += 1
             
         if verbose:
+            if show_plot:
+                clear_output(wait=True)
+                fig,ax=plot_array(antpos,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
+                plt.pause(0.01)
             print('Array size is now: {:.2f} wavelengths'.format(global_min_array_size))
             print('{:d} newly fulfilled points'.format(global_max_n_new_fulfilled))
             print('{:d} total antennas antpos'.format(antpos.shape[0]))
