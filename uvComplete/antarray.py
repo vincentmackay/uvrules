@@ -133,7 +133,7 @@ class AntArray(object):
     
     @check_commanded
     def add_ant_rules_parallelized(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, num_cores = 64):
-        self.antpos = uvComplete.rules.add_ant_rules_parallelized(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin, n_to_add, n_max_antennas, save_file, save_name, verbose, show_plot, num_cores)
+        self.antpos = uvComplete.rules.add_ant_rules_parallelized(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, num_cores = num_cores)
         
         
         
