@@ -7,12 +7,12 @@ Created on Tue May 21 16:45:26 2024
 """
 
 import numpy as np
-import uvComplete.utils
+import uvComplete.utils, uvComplete.rules
 from astropy import constants
 
 class AntArray(object):
     
-    def __init__(self, antpos=np.array([0, 0]), commanded=None, diameter=10, max_array_size = None, mid_freq = 140e6, bandwidth = 20e6, freq_step = 0.1e6, packing_density = 2, min_bl_lambda = 10, max_bl_lambda = 100, uv_cell_size = None, fulfilled=None, not_fulfilled=None, fulfill_tolerance = None, use_midband = True, p_norm = np.inf, array_config = None ):
+    def __init__(self, antpos=np.array([0, 0]), commanded=None, diameter=10, max_array_size = None, mid_freq = 140e6, bandwidth = 20e6, freq_step = 0.1e6, packing_density = 2, min_bl_lambda = 10, max_bl_lambda = 100, uv_cell_size = None, fulfill_tolerance = None, fulfilled=None, not_fulfilled=None,  use_midband = True, p_norm = np.inf, array_config = None ):
         '''
             Initialize the AntArray object
             
