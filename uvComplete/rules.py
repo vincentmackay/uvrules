@@ -799,6 +799,9 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment_old(commanded,antpos, fulfill_tolerance)
         not_fulfilled = not_fulfilled[np.argsort(np.linalg.norm(not_fulfilled, axis=1))]
         n_added += 1
+        if save_file:
+            # Saving the variable to disk
+            np.save('antpos_progress_'+save_name+'.npy',antpos)
             
         if verbose:
             if show_plot:
