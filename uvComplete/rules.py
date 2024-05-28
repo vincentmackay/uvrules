@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display, clear_output
 import itertools
 import pickle
-from uvComplete.utils import check_fulfillment,check_fulfillment_old, get_array_size, get_new_fulfilled_old, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_antpos_history
+from uvComplete.utils import check_fulfillment,check_fulfillment_idx,check_fulfillment_old, get_array_size, get_new_fulfilled_old, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_antpos_history
 from multiprocessing import Pool
 import time
 from datetime import timedelta
@@ -19,212 +19,6 @@ from datetime import timedelta
 class ExitLoopsException(Exception):
     pass
 
-def create_array_rules(commanded, built=None, diameter = None, max_array_size = None, fulfill_tolerance = 0.5, order = -1, show_plot = True, save_file = False,save_name='rules', verbose = True, n_max_antennas = -1, center_at_origin = True, check_first = 'built', check_all_built = True, check_all_not_fulfilled = False, next_built = 1, show_plot_skip = 10, second_priority = 'array_size'):
-
-    
-    if built is not None:
-        built = np.asarray(built)
-        starting_from_scratch = False
-        
-        if not (built.shape == (2,) or (len(built.shape) == 2 and built.shape[1] == 2)):
-            print('Incorrect passed built array, using [0,0].')
-            built = np.asarray([0,0])
-            starting_from_scratch = True
-    else:
-        built = np.asarray([0,0])
-        starting_from_scratch = True    
-
-    
-    if verbose:
-        print('Before even beginning, have:')
-        print('{:d} antennas built'.format(built.shape[0]))
-    
-    
-    # sort by longest to shortest baseline
-    commanded = commanded[np.argsort(order * np.linalg.norm(commanded, axis=1))]
-    
-    # if starting from zero, do the first iteration, which is trivial
-    if starting_from_scratch:
-        built = np.vstack([built, commanded[0]])
-    
-    # check fulfillment
-    n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment_old(commanded,built, fulfill_tolerance)
-    
-    n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, built, fulfill_tolerance)
-        
-
-    not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
-    flips = np.asarray([-1,1])
-    
-    
-    
-    if check_all_built and check_all_not_fulfilled:
-        print("It is not recommended to have both check_all_built and check_all_not_fulfilled set to True, this will take weeks. Use the parallelized create_array_rules_parallelized instead.")
-    
-    skip_built = (check_first == 'not_fulfilled' and not check_all_built and not check_all_not_fulfilled)
-    i_skip = 0
-    
-    while(not_fulfilled.shape[0]>=1):
-        if built.shape[0]==n_max_antennas:
-            break
-        success = False
-        max_n_new_fulfilled = 0
-        min_built_size = get_array_size(built)
-        max_min_distance_from_new_antpos = 0
-        
-        # Decide which one will be the outer loop, and which one will be the inner loop
-        if check_first == 'built':
-            inner_loop = built
-            outer_loop = not_fulfilled
-            check_second = 'not_fulfilled'
-        elif check_first == 'not_fulfilled':
-            inner_loop = not_fulfilled
-            outer_loop = built
-            check_second = 'built'
-        else:
-            raise ValueError("Wrong value for check_first")
-        
-        
-        
-        # iterate over all combinations of built antennas and unfulfilled uv point
-        for i in range(outer_loop.shape[0])[skip_built*i_skip:]:
-            # iterate over all the not fulfilled baselines
-            for j in range(inner_loop.shape[0]):
-                # try both the positive and negative position
-                for k in range(flips.shape[0]):
-                    collision_pass = False
-                    array_size_pass = False
-                    if check_first == 'built':
-                        new_antpos = inner_loop[j*next_built] + flips[k] * outer_loop[i]
-                    elif check_first == 'not_fulfilled':
-                        new_antpos = outer_loop[i*next_built] + flips[k] * inner_loop[j]
-       
-                    # try and add one antenna at the longest commanded-but-not-fulfilled distance from point i
-                    built_temp = np.vstack([built,new_antpos]) # 50 us
-    
-                    
-                    
-                    if diameter is None:
-                        collision_pass = True
-                    else:
-                        collision_pass = not collision_check(built_temp,diameter)
-                    
-                    # check the size of the array
-                    if max_array_size is None:
-                        array_size_pass = True
-                        if check_all_built or check_all_not_fulfilled:
-                            built_temp_size = get_array_size(built_temp)
-                    else:
-                        if center_at_origin:
-                            if np.linalg.norm(new_antpos)>max_array_size/2:
-                                continue
-                            else:
-                                array_size_pass = True
-                                if check_all_built or check_all_not_fulfilled:
-                                    built_temp_size = get_array_size(built_temp)
-                        else:
-                            built_temp_size = get_array_size(built_temp)
-                            array_size_pass = built_temp_size<max_array_size
-                    
-                    
-                    # check if there's no collision and that we're still within max size
-                    if collision_pass and array_size_pass: #245 us
-                        success = True    
-                        n_new_fulfilled,new_fulfilled = get_new_fulfilled_old(new_antpos,built,not_fulfilled,fulfill_tolerance)
-                        min_distance_from_new_antpos = get_min_distance_from_new_antpos(built, new_antpos)
-                        if check_first == 'built' and not check_all_built:
-                            if skip_built:
-                                i_skip = i
-                            favored_new_antpos = new_antpos
-                            break # breaks out of the flips loop
-                        elif check_first == 'not_fulfilled' and not check_all_not_fulfilled:
-                            favored_new_antpos = new_antpos
-                            break # breaks out of the flips loop
-                        elif n_new_fulfilled > max_n_new_fulfilled:
-                            favored_new_antpos = new_antpos
-                            max_n_new_fulfilled = n_new_fulfilled
-                        elif n_new_fulfilled == max_n_new_fulfilled:
-                            if second_priority == 'array_size':
-                                if built_temp_size < min_built_size:
-                                    favored_new_antpos = new_antpos
-                                    min_built_size = built_temp_size
-                                elif built_temp_size == min_built_size:
-                                    if min_distance_from_new_antpos > max_min_distance_from_new_antpos:
-                                        favored_new_antpos = new_antpos
-                                        max_min_distance_from_new_antpos = min_distance_from_new_antpos
-                            elif second_priority == 'min_distance_from_new_antpos':
-                                if min_distance_from_new_antpos > max_min_distance_from_new_antpos:
-                                    favored_new_antpos = new_antpos
-                                    max_min_distance_from_new_antpos = min_distance_from_new_antpos
-                                elif min_distance_from_new_antpos == max_min_distance_from_new_antpos:
-                                    if built_temp_size < min_built_size:
-                                        favored_new_antpos = new_antpos
-                                        min_built_size = built_temp_size
-                        
-                if success == True:
-                    if check_first == 'built' and not check_all_built:
-                        break # breaks out of the inner loop
-                    if check_first == 'not_fulfilled' and not check_all_not_fulfilled:
-                        break # breaks out of the inner loop
-            if success == True:
-                if check_second == 'built' and not check_all_built:
-                    break # breaks out of the outer loop
-                if check_second == 'not_fulfilled' and not check_all_not_fulfilled:
-                    break # breaks out of the outer loop
-        
-            
-        if success == False:
-            print('Array is full for this set of parameters, quitting.')
-            return built
-            break
-            
-        
-        n_new_fulfilled,new_fulfilled = get_new_fulfilled_old(favored_new_antpos,built,not_fulfilled,fulfill_tolerance)
-        built = np.vstack([built,favored_new_antpos])
-        n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment_old(commanded,built, fulfill_tolerance)
-        not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
-        
-        n_new_fulfilled_list.append(n_new_fulfilled)
-        n_not_fulfilled_list.append(n_not_fulfilled)
-        new_fulfilled_list.append(new_fulfilled)
-        
-        printout_condition = built.shape[0]%10==0 or (not_fulfilled.shape[0]<1000)
-  
-        if show_plot and (built.shape[0]%show_plot_skip==0 or not_fulfilled.shape[0]==0):
-            
-            clear_output(wait=True)
-            if verbose:
-                print('{:d} newly fulfilled points'.format(n_new_fulfilled))
-                print('{:d} total antennas built'.format(built.shape[0]))
-                print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
-            #built_uvs = antpos_to_uv(built)
-            fig,ax=plot_array(built,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
-            plt.pause(0.01)
-            
-            #display(fig)
-        if verbose and not show_plot:
-            if printout_condition:
-                clear_output(wait=True)
-                print('{:d} newly fulfilled points'.format(n_new_fulfilled))
-                print('{:d} total antennas built'.format(built.shape[0]))
-                print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
-                
-    
-    plt.close()
-
-    if save_file:
-        # Saving the variable to disk
-        with open('built_'+save_name+'.pkl', 'wb') as file:
-            pickle.dump(built, file)
-
-    
-    if verbose:
-        array_size = get_array_size(built)
-        print('Done.')
-        print(f'Used {built.shape[0]} antennas to fulfill all baselines, array size is '+'{:.2f} wavelengths.'.format(array_size))
-        
-    plt.close()
-    return built
 
 
     
@@ -293,12 +87,12 @@ def find_local_extrema(chunk, antpos, not_fulfilled, flips, fulfill_tolerance,di
             min_distance_from_new_antpos = get_min_distance_from_new_antpos(antpos, new_antpos) # 215 us
             
 
-            if new_fulfilled.shape[0] > max_n_new_fulfilled:
-                max_n_new_fulfilled = new_fulfilled.shape[0]
+            if len(new_fulfilled) > max_n_new_fulfilled:
+                max_n_new_fulfilled = len(new_fulfilled)
                 favored_i = i
                 favored_j = j
                 favored_k = k
-            elif new_fulfilled.shape[0] == max_n_new_fulfilled:
+            elif len(new_fulfilled) == max_n_new_fulfilled:
                 if min_distance_from_new_antpos > max_min_distance_from_new_antpos:
                     max_min_distance_from_new_antpos = min_distance_from_new_antpos
                     favored_i = i
@@ -313,128 +107,6 @@ def find_local_extrema(chunk, antpos, not_fulfilled, flips, fulfill_tolerance,di
     return success, max_n_new_fulfilled, max_min_distance_from_new_antpos, min_array_size, favored_i, favored_j, favored_k, newly_ruled_out_antpos
 
 
-        
-        
-def create_array_rules_parallelized(commanded, built = None, diameter = 8.54, max_array_size = 300, fulfill_tolerance = 0.5, order = -1, show_plot = True, save_file = False, save_name = 'long_rules', verbose = True, num_cores = 64):
-    
-    if built is not None:
-        built = np.asarray(built)
-        
-        if not (built.shape == (2,) or (len(built.shape) == 2 and built.shape[1] == 2)):
-            print('Incorrect passed built array, using [0,0].')
-            built = np.asarray([0,0])
-    else:
-        built = np.asarray([0,0])
-
-    
-    if show_plot:
-        fig,ax = plt.subplots(1,3,figsize=(15,5))
-    
-    if verbose:
-        print('Before even beginning, have:')
-        print('{:d} antennas built'.format(built.shape[0]))
-    
-    
-    # sort by longest to shortest baseline
-    commanded = commanded[np.argsort(order * np.linalg.norm(commanded, axis=1))]
-    
-    n_new_fulfilled_list,_,_ = get_antpos_history(commanded, built, fulfill_tolerance)
-    
-    not_fulfilled = np.copy(commanded)
-    
-    # do the first iteration, which is trivial
-    built = np.vstack([built, not_fulfilled[0]])
-    n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment_old(commanded,built, fulfill_tolerance)
-    flips = np.asarray([-1,1])
-    
-    
-    while(not_fulfilled.shape[0]>=1):
-        
-        all_combinations = list(itertools.product(range(built.shape[0]),range(not_fulfilled.shape[0]),range(2)))
-        
-        
-        chunks = list(chunkify(all_combinations, len(all_combinations) // num_cores))
-        
-        args_for_starmap = [(chunk, built, not_fulfilled, flips, fulfill_tolerance,diameter,max_array_size) for chunk in chunks]
-        # Run parallel computation
-        with Pool(processes = num_cores) as pool:
-            results = pool.starmap(find_local_extrema, args_for_starmap)
-        
-        # Aggregate results
-        global_success = False
-        global_max_n_new_fulfilled = 0
-        global_max_min_distance_from_new_antpos = 0
-        global_min_built_size = 0
-        global_favored_i = global_favored_j = global_favored_k = None
-        
-        for result in results:
-            if result[0] == True:
-                global_success = True
-            if result[1] > global_max_n_new_fulfilled:
-                global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_built_size,global_favored_i,global_favored_j,global_favored_k = result[1:]
-            elif result[1] == global_max_n_new_fulfilled:
-                if result[2]>global_max_min_distance_from_new_antpos:
-                    global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_built_size,global_favored_i,global_favored_j,global_favored_k = result[1:]
-                elif result[2]==global_max_min_distance_from_new_antpos:
-                    if result[3]>global_min_built_size:
-                        global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_built_size,global_favored_i,global_favored_j,global_favored_k = result[1:]
-                        
-        if global_success == False:
-            print('Array is full for this set of parameters, quitting.')
-            return built
-            break
-            
-        
-        built = np.vstack([built,built[global_favored_i] + flips[global_favored_k]*not_fulfilled[global_favored_j]])
-        n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment_old(commanded,built, fulfill_tolerance)
-        not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
-        
-        n_new_fulfilled_list.append(global_max_n_new_fulfilled)
-        
-        if show_plot:
-            clear_output(wait=True)
-            plt.pause(0.01)
-            #built_uvs = antpos_to_uv(built)
-            ax[0].plot(commanded[:,0],commanded[:,1],'.',color='k',alpha=0.15,label='Commanded points')
-            ax[0].plot(fulfilled[:,0],fulfilled[:,1],'.',color='#00ff00',label='Fulfilled points')
-            ax[0].set_title('uv plane')
-            ax[0].set_xlabel(r'$u$')
-            ax[0].set_ylabel(r'$v$')
-            #ax[0].legend()
-            ax[1].scatter(*zip(*built),marker='o', s=20,color='k')
-            ax[1].set_title('Array')
-            ax[1].set_xlabel(r'EW [$\lambda$]')
-            ax[1].set_ylabel(r'NS [$\lambda$]')
-            ax[2].plot(range(len(n_new_fulfilled_list)),n_new_fulfilled_list,color='k')
-            ax[2].set_ylabel('Number of newly fulfilled points')
-            ax[2].set_xlabel('New antenna rank')
-            ax[2].grid()
-            for i in range(2):
-                ax[i].set_aspect('equal', adjustable='box')
-            #if built.shape[0]%10==0:
-            display(fig)
-            
-        if verbose:
-            print('Array size is now: {:.2f} wavelengths'.format(global_min_built_size))
-            print('{:d} newly fulfilled points'.format(global_max_n_new_fulfilled))
-            print('{:d} total antennas built'.format(built.shape[0]))
-            print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
-    
-    
-
-    if save_file:
-        # Saving the variable to disk
-        np.save('built_'+save_name+'.npy',built)
-
-    return built
-    if verbose:
-        print('Done.')
-        
-        
-        
-        
-        
-        
         
         
         
@@ -470,7 +142,7 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
 
     if verbose:
         print('Before even beginning, have:')
-        print('{:d} antennas in the antpos array'.format(antpos.shape[0]))
+        print('{:d} antennas in the antpos array'.format(len(antpos)))
     
     
     # sort by longest to shortest baseline
@@ -498,7 +170,7 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
     # This array will contain the combinations that have been ruled out already, so that they are skipped
     ruled_out_antpos = np.asarray([0,0])
     
-    while(not_fulfilled.shape[0]>=1 and n_added<n_to_add and antpos.shape[0]<n_max_antennas):
+    while(len(not_fulfilled)>=1 and n_added<n_to_add and len(antpos)<n_max_antennas):
         success = False
         max_n_new_fulfilled = 0
         min_array_size = get_array_size(antpos)
@@ -519,11 +191,11 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
         
         
         # iterate over all combinations of antpos antennas and unfulfilled uv point
-        for i in range(outer_loop.shape[0]):
+        for i in range(len(outer_loop)):
             # iterate over the inner loop
-            for j in range(inner_loop.shape[0]):
+            for j in range(len(inner_loop)):
                 # try both the positive and negative position
-                for k in range(flips.shape[0]):
+                for k in range(len(flips)):
                     
                     collision_pass = False
                     array_size_pass = False
@@ -583,10 +255,10 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
                         elif check_first == 'not_fulfilled' and not check_all_not_fulfilled:
                             favored_new_antpos = new_antpos
                             break # breaks out of the flips loop
-                        elif new_fulfilled.shape[0] > max_n_new_fulfilled:
+                        elif len(new_fulfilled) > max_n_new_fulfilled:
                             favored_new_antpos = new_antpos
-                            max_n_new_fulfilled = new_fulfilled.shape[0]
-                        elif new_fulfilled.shape[0] == max_n_new_fulfilled:
+                            max_n_new_fulfilled = len(new_fulfilled)
+                        elif len(new_fulfilled) == max_n_new_fulfilled:
                             if second_priority == 'array_size':
                                 if temp_array_size < min_array_size:
                                     favored_new_antpos = new_antpos
@@ -632,12 +304,12 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
         n_fulfilled, n_not_fulfilled, fulfilled, not_fulfilled = check_fulfillment_old(commanded,antpos, fulfill_tolerance)
         not_fulfilled = not_fulfilled[np.argsort(order * np.linalg.norm(not_fulfilled, axis=1))]
         
-        n_new_fulfilled_list.append(new_fulfilled.shape[0])
+        n_new_fulfilled_list.append(len(new_fulfilled))
         n_not_fulfilled_list.append(n_not_fulfilled)
         new_fulfilled_list.append(new_fulfilled)
         
-        printout_condition = antpos.shape[0]%10==0 or (not_fulfilled.shape[0]<1000)
-        show_plot_condition = (antpos.shape[0]%show_plot_skip==0 or not_fulfilled.shape[0]==0)
+        printout_condition = len(antpos)%10==0 or (len(not_fulfilled)<1000)
+        show_plot_condition = (len(antpos)%show_plot_skip==0 or len(not_fulfilled)==0)
     
   
         if show_plot:
@@ -645,9 +317,9 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
             
                 clear_output(wait=True)
                 if verbose:
-                    print('{:d} newly fulfilled points'.format(new_fulfilled.shape[0]))
-                    print('{:d} total antennas antpos'.format(antpos.shape[0]))
-                    print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+                    print('{:d} newly fulfilled points'.format(len(new_fulfilled)))
+                    print('{:d} total antennas antpos'.format(len(antpos)))
+                    print('{:d}/{:d} commanded points remain to be fulfilled'.format(len(not_fulfilled),len(commanded)))
                 #antpos_uvs = antpos_to_uv(antpos)
                 fig,ax=plot_array(antpos,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
                 plt.pause(0.01)
@@ -656,9 +328,9 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
         elif verbose:
             if printout_condition:
                 clear_output(wait=True)
-                print('{:d} newly fulfilled points'.format(new_fulfilled.shape[0]))
-                print('{:d} total antennas antpos'.format(antpos.shape[0]))
-                print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+                print('{:d} newly fulfilled points'.format(len(new_fulfilled)))
+                print('{:d} total antennas antpos'.format(len(antpos)))
+                print('{:d}/{:d} commanded points remain to be fulfilled'.format(len(not_fulfilled),len(commanded)))
                 
     
     plt.close()
@@ -672,51 +344,10 @@ def add_ant_rules(commanded, antpos=None, diameter = None, max_array_size = None
     if verbose:
         array_size = get_array_size(antpos)
         print('Done.')
-        print(f'Used {antpos.shape[0]} antennas to fulfill all baselines, array size is '+'{:.2f} wavelengths.'.format(array_size))
+        print(f'Used {len(antpos)} antennas to fulfill all baselines, array size is '+'{:.2f} wavelengths.'.format(array_size))
         
     plt.close()
     return antpos
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -733,12 +364,9 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
     if verbose:
         total_start_time = time.time()
         print('Before even beginning, have:')
-        print('{:d} antennas in the antpos array'.format(antpos.shape[0]))
+        print('{:d} antennas in the antpos array'.format(len(antpos)))
     
-    
-    # sort by longest to shortest baseline
-    commanded = commanded[np.argsort(np.linalg.norm(commanded, axis=1))]
-    
+
     # if starting from zero, do the first iteration, which is trivial
     if starting_from_scratch:
         antpos = np.vstack([antpos, commanded[0]])
@@ -748,18 +376,15 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
 
     not_fulfilled = not_fulfilled[np.argsort(np.linalg.norm(not_fulfilled, axis=1))]
     flips = np.asarray([-1,1])
-    
-    if show_plot:
-        n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, antpos, fulfill_tolerance)
-        
+
     
     ruled_out_antpos = np.asarray([0,0])
-    while(not_fulfilled.shape[0]>=1 and n_added<n_to_add and antpos.shape[0]<n_max_antennas):
+    while(len(not_fulfilled)>=1 and n_added<n_to_add and len(antpos)<n_max_antennas):
         
         if verbose:
             step_start_time = time.time()
         
-        all_combinations = list(itertools.product(range(antpos.shape[0]),range(not_fulfilled.shape[0]),range(2)))
+        all_combinations = list(itertools.product(range(len(antpos)),range(len(not_fulfilled)),range(2)))
               
         chunks = list(chunkify(all_combinations, len(all_combinations) // num_cores))
         
@@ -806,12 +431,13 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
         if verbose:
             if show_plot:
                 clear_output(wait=True)
+                n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, antpos, fulfill_tolerance)
                 fig,ax=plot_array(antpos,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = fulfilled, not_fulfilled = not_fulfilled)
                 plt.pause(0.01)
             print('Array size is now: {:.2f} wavelengths'.format(global_min_array_size))
             print('{:d} newly fulfilled points'.format(global_max_n_new_fulfilled))
-            print('{:d} total antennas antpos'.format(antpos.shape[0]))
-            print('{:d}/{:d} commanded points remain to be fulfilled'.format(not_fulfilled.shape[0],commanded.shape[0]))
+            print('{:d} total antennas antpos'.format(len(antpos)))
+            print('{:d}/{:d} commanded points remain to be fulfilled'.format(len(not_fulfilled),len(commanded)))
             current_time = time.time()
             step_elapsed_time = current_time - step_start_time
             step_time_str = str(timedelta(seconds=int(step_elapsed_time)))
@@ -840,6 +466,202 @@ def add_ant_rules_parallelized(commanded, antpos = None, diameter = None, max_ar
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def try_new_antpos(antpos, new_antpos, commanded,fulfill_tolerance, diameter, max_array_size,center_at_origin):
+    collision_pass = False
+    array_size_pass = False
+    temp_array_size = np.inf
+    
+    # try and add one antenna at the longest commanded-but-not-fulfilled distance from point i
+    temp_antpos = np.vstack([antpos, new_antpos]) # 50 us
+
+    # Check if there's no collision (collision_check returns True if there's a collision)
+    if not collision_check(temp_antpos,diameter):
+        collision_pass = True
+    else:
+        return collision_pass, array_size_pass, temp_array_size
+    
+    # Check the size of the array
+    temp_array_size = get_array_size(temp_antpos) #241 us
+    if max_array_size is None:
+        array_size_pass = True
+    elif center_at_origin:
+        if np.linalg.norm(new_antpos)>max_array_size/2:
+            return collision_pass, array_size_pass, temp_array_size
+        else:
+            array_size_pass = True
+    else:
+        if temp_array_size < max_array_size:
+            array_size_pass = True
+        else:
+            return collision_pass, array_size_pass, temp_array_size
+        
+    return collision_pass, array_size_pass, temp_array_size
+
+def find_local_extrema_2(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin):
+# This function is used for the parallelization
+    max_n_new_fulfilled = 0
+    min_array_size = get_array_size(antpos)
+    max_min_distance_from_new_antpos = 0
+    favored_i = favored_j = favored_k = None
+    success = False
+    newly_ruled_out_combinations = []
+    for i,j,k in chunk:
+        new_antpos = antpos[i] + (-1)**k * commanded[j]
+        collision_pass, array_size_pass, temp_array_size = try_new_antpos(antpos, new_antpos, commanded,fulfill_tolerance, diameter, max_array_size,center_at_origin)
+        if collision_pass and array_size_pass:
+            success = True    
+            # check how many are newly fulfilled
+            new_fulfilled = get_new_fulfilled(new_antpos,antpos,commanded[not_fulfilled_idx], fulfill_tolerance) # 15 ms
+
+            # check what's the shortest distance of the new point from any already antpos antenna
+            min_distance_from_new_antpos = get_min_distance_from_new_antpos(antpos, new_antpos) # 215 us
+            
+
+            if len(new_fulfilled) > max_n_new_fulfilled:
+                max_n_new_fulfilled = len(new_fulfilled)
+                favored_i = i
+                favored_j = j
+                favored_k = k
+            elif len(new_fulfilled) == max_n_new_fulfilled:
+                if min_distance_from_new_antpos > max_min_distance_from_new_antpos:
+                    max_min_distance_from_new_antpos = min_distance_from_new_antpos
+                    favored_i = i
+                    favored_j = j
+                    favored_k = k
+                elif min_distance_from_new_antpos == max_min_distance_from_new_antpos:
+                    if temp_array_size < min_array_size:
+                        min_array_size = temp_array_size
+                        favored_i = i
+                        favored_j = j
+                        favored_k = k
+        else:
+            newly_ruled_out_combinations.append((i,j,k))
+    return success, max_n_new_fulfilled, max_min_distance_from_new_antpos, min_array_size, favored_i, favored_j, favored_k, newly_ruled_out_combinations
+
+
+
+
+
+
+def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_array_size = None, fulfill_tolerance = 0.5, center_at_origin=True, n_to_add = -1, n_max_antennas = -1, save_file = False, save_name = 'default_name', show_plot = False, verbose = True, num_cores = 64):
+    
+    n_added = 0
+    
+    starting_from_scratch, antpos = initialize_antpos(antpos)
+
+
+
+    if verbose:
+        total_start_time = time.time()
+        print('Before even beginning, have:')
+        print('{:d} antennas in the antpos array'.format(len(antpos)))
+    
+    
+    # if starting from zero, do the first iteration, which is trivial
+    if starting_from_scratch:
+        antpos = np.vstack([antpos, commanded[0]])
+    
+    # check fulfillment
+    fulfilled_idx, not_fulfilled_idx = check_fulfillment_idx(commanded, antpos, fulfill_tolerance)
+
+
+ 
+
+    ruled_out_combinations = []
+    while(len(not_fulfilled_idx)>=1 and not n_added==n_to_add and not len(antpos)==n_max_antennas):
+        if verbose:
+            step_start_time = time.time()
+        
+        all_combinations = set(itertools.product(range(len(antpos)),not_fulfilled_idx,range(2)))
+        remaining_combinations = list(all_combinations - set(ruled_out_combinations))      
+        
+        
+        chunks = list(chunkify(remaining_combinations, len(remaining_combinations) // num_cores))
+        
+        args_for_starmap = [(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin) for chunk in chunks]
+        # Run parallel computation
+        with Pool(processes = num_cores) as pool:
+            results = pool.starmap(find_local_extrema_2, args_for_starmap)
+        
+        # Aggregate results
+        global_success = False
+        global_max_n_new_fulfilled = 0
+        global_max_min_distance_from_new_antpos = 0
+        global_min_array_size = 0
+        global_favored_i = global_favored_j = global_favored_k = None
+        
+        for result in results:
+            if result[0] == True:
+                global_success = True
+            if result[1] > global_max_n_new_fulfilled:
+                global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
+            elif result[1] == global_max_n_new_fulfilled:
+                if result[2]>global_max_min_distance_from_new_antpos:
+                    global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
+                elif result[2]==global_max_min_distance_from_new_antpos:
+                    if result[3]>global_min_array_size:
+                        global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
+            if result[7] is not None:
+                ruled_out_combinations = list( set(ruled_out_combinations) | set(result[7]))
+                
+        if global_success == False:
+            print('Array is full for this set of parameters, quitting.')
+            return antpos
+            break
+            
+        antpos = np.vstack([antpos,antpos[global_favored_i] + (-1)**global_favored_k*commanded[global_favored_j]])
+        fulfilled_idx, not_fulfilled_idx = check_fulfillment_idx(commanded,antpos, fulfill_tolerance)
+        n_added += 1
+        if save_file:
+            # Saving the variable to disk
+            np.save('antpos_progress_'+save_name+'.npy',antpos)
+            
+        if verbose:
+            if show_plot:
+                clear_output(wait=True)
+                n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, antpos, fulfill_tolerance)
+                fig,ax=plot_array(antpos,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = commanded[fulfilled_idx], not_fulfilled = commanded[not_fulfilled_idx])
+                plt.pause(0.01)
+            print('Array size is now: {:.2f} wavelengths'.format(global_min_array_size))
+            print('{:d} newly fulfilled points'.format(global_max_n_new_fulfilled))
+            print('{:d} total antennas antpos'.format(len(antpos)))
+            print('{:d}/{:d} commanded points remain to be fulfilled'.format(len(not_fulfilled_idx),len(commanded)))
+            current_time = time.time()
+            step_elapsed_time = current_time - step_start_time
+            step_time_str = str(timedelta(seconds=int(step_elapsed_time)))
+            total_elapsed_time = current_time - total_start_time
+            total_time_str = str(timedelta(seconds=int(total_elapsed_time)))
+            print(f'Time for last step: {step_time_str}')
+            print(f'Total time so far: {total_time_str}')
+    
+    
+
+    if save_file:
+        # Saving the variable to disk
+        np.save('antpos_'+save_name+'.npy',antpos)
+
+    return antpos
+    if verbose:
+        print('Done.')
 
 
 

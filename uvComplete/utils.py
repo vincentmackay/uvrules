@@ -41,9 +41,9 @@ def pick_baselines(commanded, antpos, fulfill_tolerance):
                 else:
                     not_fulfilled = np.delete(not_fulfilled,idx_new_fulfilled,axis=0)
                     antpairs.append((i,j))
-                if not_fulfilled.shape[0]%1000==0:
-                    print(f'{not_fulfilled.shape[0]}/{commanded.shape[0]} remaining, antpairs now has length {len(antpairs)}.')
-                if not_fulfilled.shape[0]<1:
+                if len(not_fulfilled)%1000==0:
+                    print(f'{len(not_fulfilled)/len(commanded)} remaining, antpairs now has length {len(antpairs)}.')
+                if len(not_fulfilled)<1:
                     print('Done')
                     return antpairs
 
@@ -51,7 +51,7 @@ def get_array_config(antpos):
     if len(antpos.shape)==1:
         return {0: [antpos[0], antpos[1]]}
     else:
-        return {i: [antpos[i,0], antpos[i,1]] for i in range(antpos.shape[0])}
+        return {i: [antpos[i,0], antpos[i,1]] for i in range(len(antpos))}
 
 def get_antpos_history(commanded, antpos, fulfill_tolerance):
     n_new_fulfilled_list = []
@@ -60,17 +60,17 @@ def get_antpos_history(commanded, antpos, fulfill_tolerance):
     if antpos.shape != (2,):
         if antpos.shape==2:
             new_fulfilled_temp = get_new_fulfilled(antpos[1],antpos[0],commanded,fulfill_tolerance)
-            n_new_fulfilled_list.append(new_fulfilled_temp.shape[0])
+            n_new_fulfilled_list.append(len(new_fulfilled_temp))
             new_fulfilled_list.append(new_fulfilled_temp)
-        elif antpos.shape[0]>2:
+        elif len(antpos)>2:
             not_fulfilled_temp = np.copy(commanded)
-            for i in range(antpos.shape[0])[3:]:
+            for i in range(len(antpos))[3:]:
                 antpos_temp = antpos[:i-1]
                 new_fulfilled_temp = get_new_fulfilled(antpos[i],antpos_temp,not_fulfilled_temp,fulfill_tolerance)
-                n_new_fulfilled_list.append(new_fulfilled_temp.shape[0])
+                n_new_fulfilled_list.append(len(new_fulfilled_temp))
                 new_fulfilled_list.append(new_fulfilled_temp)
                 fulfilled_temp, not_fulfilled_temp = check_fulfillment(not_fulfilled_temp,antpos_temp, fulfill_tolerance)
-                n_not_fulfilled_list.append(not_fulfilled_temp.shape[0])
+                n_not_fulfilled_list.append(len(not_fulfilled_temp))
     return n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list
 
 def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_array = False, plot_new_fulfilled = False, fig=None,ax=None,n_new_fulfilled_list = None,n_not_fulfilled_list = None,new_fulfilled_list = None, fulfilled = None, not_fulfilled = None):
@@ -94,7 +94,7 @@ def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_arra
             ax[0].set_xlabel(r'$u$')
             ax[0].set_ylabel(r'$v$')
             ax[1].plot(antpos[:,0],antpos[:,1],'.',color='k')
-            ax[1].set_title(f'Array ({antpos.shape[0]} antennas)')
+            ax[1].set_title(f'Array ({len(antpos)} antennas)')
             ax[1].set_xlabel(r'EW [m]')
             ax[1].set_ylabel(r'NS [m]')
             for i in [0,1]:
@@ -120,10 +120,10 @@ def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_arra
         
         plt.subplots_adjust(bottom=0.2)
         v_min = 0
-        v_max = antpos.shape[0]
-        color_scale_antpos = np.linspace(0,1,antpos.shape[0])
+        v_max = len(antpos)
+        color_scale_antpos = np.linspace(0,1,len(antpos))
         array_scatter_plot = ax[1].scatter(antpos[:,0],antpos[:,1],c=colormap(color_scale_antpos))
-        ax[1].set_title(f'Array ({antpos.shape[0]} antennas)')
+        ax[1].set_title(f'Array ({len(antpos)} antennas)')
         ax[1].set_xlabel(r'EW [m]')
         ax[1].set_ylabel(r'NS [m]')
         
@@ -236,8 +236,8 @@ def get_new_fulfilled(new_antpos,antpos,not_fulfilled,fulfill_tolerance,p_norm =
 def check_fulfillment_old(commanded, antpos, fulfill_tolerance, p_norm = np.inf, flip_tolerance = 0.0):
     # Returns the number of fulfilled and unfulfilled points, along with the corresponding arrays
 
-    if len(antpos.shape)<2 or antpos.shape[0]<2:
-        return 0, commanded.shape[0], np.array([]), commanded
+    if len(antpos.shape)<2 or len(antpos)<2:
+        return 0, len(commanded), np.array([]), commanded
     
     else:
         antpos_uvs = antpos_to_uv(antpos,flip_tolerance=flip_tolerance)
@@ -255,12 +255,12 @@ def check_fulfillment_old(commanded, antpos, fulfill_tolerance, p_norm = np.inf,
         fulfilled = commanded[fulfilled_mask]
         not_fulfilled = commanded[~fulfilled_mask]
         
-        return fulfilled.shape[0], not_fulfilled.shape[0], fulfilled, not_fulfilled
+        return len(fulfilled), len(not_fulfilled), fulfilled, not_fulfilled
     
 def check_fulfillment(commanded, antpos, fulfill_tolerance, p_norm = np.inf, flip_tolerance = 0.0):
     # Returns the number of fulfilled and unfulfilled points, along with the corresponding arrays
 
-    if len(antpos.shape)<2 or antpos.shape[0]<2:
+    if len(antpos.shape)<2 or len(antpos)<2:
         return np.array([]), commanded
     
     else:
@@ -280,12 +280,36 @@ def check_fulfillment(commanded, antpos, fulfill_tolerance, p_norm = np.inf, fli
         not_fulfilled = commanded[~fulfilled_mask]
         
         return fulfilled, not_fulfilled
+    
+    
+def check_fulfillment_idx(commanded, antpos, fulfill_tolerance, p_norm=np.inf, flip_tolerance=0.0):
+    # Returns the indices of fulfilled and unfulfilled points
+
+    if len(antpos.shape) < 2 or len(antpos) < 2:
+        return np.array([]), np.arange(len(commanded))
+    else:
+        antpos_uvs = antpos_to_uv(antpos, flip_tolerance=flip_tolerance)
+
+        # Build a KD-tree for antpos_uvs
+        tree = cKDTree(antpos_uvs)
+
+        # Find indices of commanded points that are within the threshold distance of points in antpos_uvs
+        idx_fulfilled = tree.query_ball_point(commanded, r=fulfill_tolerance, p=p_norm)
+
+        # Determine which points in commanded are close to any in antpos_uvs
+        fulfilled_mask = np.asarray([bool(idx) for idx in idx_fulfilled])
+
+        # Get the indices of fulfilled and not_fulfilled points
+        fulfilled_indices = np.where(fulfilled_mask)[0]
+        not_fulfilled_indices = np.where(~fulfilled_mask)[0]
+
+        return fulfilled_indices, not_fulfilled_indices
 
 
 def antpos_to_uv(antpos, flip_tolerance = 0.0, unique_only = False):
     # Returns the uv points from a given array of antenna positions
     
-    n_ants = antpos.shape[0]
+    n_ants = len(antpos)
     n_bls = int(n_ants*(n_ants-1)/2)
     if unique_only:
         uv_points = []
@@ -341,7 +365,13 @@ def generate_uv_grid(uv_cell_size=1., min_bl=10, max_bl=100, show_plot = True, a
         ax.set_xlabel(r'$u$ [m]')
         ax.set_ylabel(r'$v$ [m]')
         ax.grid()
-    return uv_points
+        
+        
+    uv_points = uv_points[np.argsort(np.linalg.norm(uv_points, axis=1))]
+    
+    #uv_dict = {i:uv_points[i] for i in range(len(uv_points))}
+    
+    return uv_points#uv_dict
 
 
 def generate_uv_random(uv_cell_size, r_min, r_max, fulfill_tolerance):

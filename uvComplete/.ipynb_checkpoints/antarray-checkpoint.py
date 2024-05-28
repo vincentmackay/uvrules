@@ -12,7 +12,7 @@ from astropy import constants
 
 class AntArray(object):
     
-    def __init__(self, antpos=np.array([0, 0]), commanded=None, diameter=10, max_array_size = None, mid_freq = 140e6, bandwidth = 20e6, freq_step = 0.1e6, packing_density = 2, min_bl_lambda = 10, max_bl_lambda = 100, uv_cell_size = None, fulfill_tolerance = None, fulfilled_idx=None, not_fulfilled_idx=None,  use_midband = True, p_norm = np.inf, array_config = None ):
+    def __init__(self, antpos=np.array([0, 0]), commanded=None, diameter=10, max_array_size = None, mid_freq = 140e6, bandwidth = 20e6, freq_step = 0.1e6, packing_density = 2, min_bl_lambda = 10, max_bl_lambda = 100, uv_cell_size = None, fulfill_tolerance = None, fulfilled=None, not_fulfilled=None,  use_midband = True, p_norm = np.inf, array_config = None ):
         '''
             Initialize the AntArray object
             
@@ -55,9 +55,8 @@ class AntArray(object):
             self.min_bl = min_bl_lambda * np.min(self.wavelengths)
             self.max_bl = max_bl_lambda * np.max(self.wavelengths)
         self.packing_density = packing_density
-        self.fulfilled_idx = fulfilled_idx
-        self.not_fulfilled_idx = not_fulfilled_idx
-        self.p_norm = p_norm
+        self.fulfilled = fulfilled
+        self.not_fulfilled = not_fulfilled
         
         if uv_cell_size is None:
             if use_midband:
@@ -90,10 +89,10 @@ class AntArray(object):
         
     
     @check_commanded
-    def check_fulfillment_idx(self, flip_tolerance = 0.0, return_arrays = False):
-        self.fulfilled_idx, self.not_fulfilled_idx = uvComplete.utils.check_fulfillment_idx(self.commanded,self.antpos,self.fulfill_tolerance,self.p_norm,flip_tolerance)
+    def check_fulfillment(self, flip_tolerance = 0.0, return_arrays = False):
+        _, _, self.fulfilled, self.not_fulfilled = uvComplete.utils.check_fulfillment(self.commanded,self.antpos,self.fulfill_tolerance,self.p_norm,flip_tolerance)
         if return_arrays:
-            return self.fulfilled_idx, self.not_fulfilled_idx
+            return self.fulfilled, self.not_fulfilled
         
     @check_commanded
     def get_new_fulfilled(self, new_antpos):
@@ -135,10 +134,6 @@ class AntArray(object):
     @check_commanded
     def add_ant_rules_parallelized(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, num_cores = 64):
         self.antpos = uvComplete.rules.add_ant_rules_parallelized(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, num_cores = num_cores)
-    
-    @check_commanded
-    def add_ant_rules_parallelized_2(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, num_cores = 64):
-        self.antpos = uvComplete.rules.add_ant_rules_parallelized_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, num_cores = num_cores)
         
         
         
