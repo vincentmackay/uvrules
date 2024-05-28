@@ -574,6 +574,7 @@ def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_
         total_start_time = time.time()
         print('Before even beginning, have:')
         print('{:d} antennas in the antpos array'.format(len(antpos)))
+        step_time_list = []
     
     
     # if starting from zero, do the first iteration, which is trivial
@@ -636,20 +637,26 @@ def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_
             np.save('antpos_progress_'+save_name+'.npy',antpos)
             
         if verbose:
+            current_time = time.time()
+            step_time = current_time - step_start_time
+            step_time_str = str(timedelta(seconds=int(step_time)))
+            total_time = current_time - total_start_time
+            step_time_list.append(step_time)
+            total_time_str = str(timedelta(seconds=int(total_time)))
             if show_plot:
                 clear_output(wait=True)
                 n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, antpos, fulfill_tolerance)
                 fig,ax=plot_array(antpos,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = commanded[fulfilled_idx], not_fulfilled = commanded[not_fulfilled_idx])
+                fig2,ax2 = plt.subplots(1,1,figsize=[8,3])
+                ax2.plot(range(len(step_time_list)),step_time_list)
+                ax2.set_xlabel('Iteration')
+                ax2.set_ylabel('Time [sec]')
                 plt.pause(0.01)
             print('Array size is now: {:.2f} wavelengths'.format(global_min_array_size))
             print('{:d} newly fulfilled points'.format(global_max_n_new_fulfilled))
             print('{:d} total antennas antpos'.format(len(antpos)))
             print('{:d}/{:d} commanded points remain to be fulfilled'.format(len(not_fulfilled_idx),len(commanded)))
-            current_time = time.time()
-            step_elapsed_time = current_time - step_start_time
-            step_time_str = str(timedelta(seconds=int(step_elapsed_time)))
-            total_elapsed_time = current_time - total_start_time
-            total_time_str = str(timedelta(seconds=int(total_elapsed_time)))
+            
             print(f'Time for last step: {step_time_str}')
             print(f'Total time so far: {total_time_str}')
     
