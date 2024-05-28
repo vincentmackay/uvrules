@@ -64,8 +64,8 @@ def get_antpos_history(commanded, antpos, fulfill_tolerance):
             new_fulfilled_list.append(new_fulfilled_temp)
         elif len(antpos)>2:
             not_fulfilled_temp = np.copy(commanded)
-            for i in range(len(antpos))[3:]:
-                antpos_temp = antpos[:i-1]
+            for i in range(len(antpos)):
+                antpos_temp = antpos[:i]
                 new_fulfilled_temp = get_new_fulfilled(antpos[i],antpos_temp,not_fulfilled_temp,fulfill_tolerance)
                 n_new_fulfilled_list.append(len(new_fulfilled_temp))
                 new_fulfilled_list.append(new_fulfilled_temp)
@@ -73,7 +73,7 @@ def get_antpos_history(commanded, antpos, fulfill_tolerance):
                 n_not_fulfilled_list.append(len(not_fulfilled_temp))
     return n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list
 
-def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_array = False, plot_new_fulfilled = False, fig=None,ax=None,n_new_fulfilled_list = None,n_not_fulfilled_list = None,new_fulfilled_list = None, fulfilled = None, not_fulfilled = None):
+def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_array = False, plot_new_fulfilled = False, fig=None,ax=None,n_new_fulfilled_list = None,n_not_fulfilled_list = None,new_fulfilled_list = None, fulfilled = None, not_fulfilled = None,step_time_array = None):
     
     if commanded is None:
         just_plot_array=True
@@ -102,47 +102,55 @@ def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_arra
         
     else:
         if fig is None and ax is None:
-            fig,ax = plt.subplots(1,3,figsize=(18,6))
+            fig,ax = plt.subplots(2,2,figsize=(12,10))
         if n_new_fulfilled_list is None or n_not_fulfilled_list is None or new_fulfilled_list is None:
             n_new_fulfilled_list,n_not_fulfilled_list, new_fulfilled_list = get_antpos_history(commanded, antpos,fulfill_tolerance)
         if fulfilled is None and not_fulfilled is None:
             fulfilled,not_fulfilled = check_fulfillment(commanded,antpos,fulfill_tolerance)
         
         colormap = cm.viridis
-        ax[0].plot(commanded[:,0],commanded[:,1],'.',markersize=2,color='k',alpha=1,label='Commanded points',zorder=0)
+        ax[0,0].plot(commanded[:,0],commanded[:,1],'.',markersize=2,color='k',alpha=1,label='Commanded points',zorder=0)
         for i,new_fulfilled in enumerate(new_fulfilled_list):
-            if len(new_fulfilled.shape)>1:
-                ax[0].plot(new_fulfilled[:,0],new_fulfilled[:,1],'.',markersize=2,color=colormap(i/len(new_fulfilled_list)),zorder=1)
+            if new_fulfilled is not None:
+                if len(new_fulfilled.shape)>1:
+                    ax[0,0].plot(new_fulfilled[:,0],new_fulfilled[:,1],'.',markersize=2,color=colormap(i/len(new_fulfilled_list)),zorder=1)
         #ax[0].scatter(fulfilled[:,0],fulfilled[:,1],c=colors_fulfilled,s=1,zorder=1)#,label='Fulfilled points')
-        ax[0].set_title('uv plane')
-        ax[0].set_xlabel(r'$u$')
-        ax[0].set_ylabel(r'$v$')
+        ax[0,0].set_title('uv plane')
+        ax[0,0].set_xlabel(r'$u$')
+        ax[0,0].set_ylabel(r'$v$')
         
         plt.subplots_adjust(bottom=0.2)
         v_min = 0
         v_max = len(antpos)
         color_scale_antpos = np.linspace(0,1,len(antpos))
-        array_scatter_plot = ax[1].scatter(antpos[:,0],antpos[:,1],c=colormap(color_scale_antpos))
-        ax[1].set_title(f'Array ({len(antpos)} antennas)')
-        ax[1].set_xlabel(r'EW [m]')
-        ax[1].set_ylabel(r'NS [m]')
+        array_scatter_plot = ax[1,0].scatter(antpos[:,0],antpos[:,1],c=colormap(color_scale_antpos))
+        ax[1,0].set_title(f'Array ({len(antpos)} antennas)')
+        ax[1,0].set_xlabel(r'EW [m]')
+        ax[1,0].set_ylabel(r'NS [m]')
         
-        cbar_ax = fig.add_axes([ax[0].get_position().x0, 0.05, ax[1].get_position().x1 - ax[0].get_position().x0, 0.05])
-        cbar = fig.colorbar(array_scatter_plot, cax=cbar_ax,orientation='horizontal', pad=0.2)
+        cbar = fig.colorbar(array_scatter_plot, ax=ax[0,0],orientation='horizontal', pad=0.2)
         cbar.set_label('Antenna rank')  # Set label for the color bar
         cbar.set_ticks([0, 1])  # Optionally, set custom ticks
         cbar.set_ticklabels([v_min, v_max])
         
-        ax[2].plot(n_new_fulfilled_list,color='b')
-        ax[2].set_ylabel('Number of newly fulfilled points',color='b')
-        ax[2].set_xlabel('New antenna rank')
-        ax[2].grid()
+        ax[0,1].plot(np.arange(len(n_new_fulfilled_list)) + 1, n_new_fulfilled_list,color='b')
+        ax[0,1].set_ylabel('Number of newly fulfilled points',color='b')
+        ax[0,1].set_xlabel('Antenna rank')
+        ax[0,1].set_xlim([1,len(n_new_fulfilled_list)])
+        ax[0,1].grid()
         
-        ax_remaining = ax[2].twinx()
-        ax_remaining.plot(n_not_fulfilled_list,color='r')
+        ax_remaining = ax[0,1].twinx()
+        ax_remaining.plot(np.arange(len(n_not_fulfilled_list)) + 1,n_not_fulfilled_list,color='r')
         ax_remaining.set_ylabel('Number of commanded points that\nremain to be fulfilled',color='r')
         for i in range(2):
-            ax[i].set_aspect('equal', adjustable='box')
+            ax[i,0].set_aspect('equal', adjustable='box')
+            
+        if step_time_array is not None:
+            ax[1,1].plot(np.arange(len(step_time_array))[2:]+1,step_time_array[2:])
+            ax[1,1].set_xlabel('Antenna rank')
+            ax[1,1].set_ylabel('Time [sec]')
+            ax[1,1].set_xlim([1,len(step_time_array)])
+            ax[1,1].grid()
         
     return fig,ax
     
