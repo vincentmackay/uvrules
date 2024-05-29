@@ -1,5 +1,5 @@
 Metadata-Version: 2.1
-Name: uvComplete
+Name: uv_complete
 Version: 0.1
 Summary: A package to generate uv complete arrays.
 Home-page: git@github.com:vincentmackay/uv-complete.git

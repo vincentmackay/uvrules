@@ -7,7 +7,7 @@ Created on Thu Feb 15 12:27:51 2024
 """
 
 import numpy as np
-from uvComplete.utils import collision_check
+from uv_complete.utils import collision_check
 random_seed = 11141
 
 def create_array_spiral(n, array_size, diameter=1):

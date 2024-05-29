@@ -7,7 +7,7 @@ Created on Tue May 21 16:45:26 2024
 """
 
 import numpy as np
-import uvComplete.utils, uvComplete.rules
+import uv_complete.utils, uv_complete.rules
 from astropy import constants
 
 class AntArray(object):
@@ -74,7 +74,7 @@ class AntArray(object):
             self.generate_commanded(show_plot=False)
         
         if array_config is None:
-            array_config = uvComplete.utils.get_array_config(self.antpos)
+            array_config = uv_complete.utils.get_array_config(self.antpos)
         
     
     def check_commanded(method):
@@ -86,63 +86,63 @@ class AntArray(object):
     
         
     def generate_commanded(self, show_plot = True, ax = None):
-        self.commanded = uvComplete.utils.generate_uv_grid(self.uv_cell_size, self.min_bl, self.max_bl, show_plot, ax)
+        self.commanded = uv_complete.utils.generate_uv_grid(self.uv_cell_size, self.min_bl, self.max_bl, show_plot, ax)
         
     
     @check_commanded
     def check_fulfillment_idx(self, flip_tolerance = 0.0, return_arrays = False):
-        self.fulfilled_idx, self.not_fulfilled_idx = uvComplete.utils.check_fulfillment_idx(self.commanded,self.antpos,self.fulfill_tolerance,self.p_norm,flip_tolerance)
+        self.fulfilled_idx, self.not_fulfilled_idx = uv_complete.utils.check_fulfillment_idx(self.commanded,self.antpos,self.fulfill_tolerance,self.p_norm,flip_tolerance)
         if return_arrays:
             return self.fulfilled_idx, self.not_fulfilled_idx
         
     @check_commanded
     def get_new_fulfilled(self, new_antpos):
         self.check_fulfillment()
-        return uvComplete.utils.get_new_fulfilled(new_antpos, self.antpos, self.not_fulfilled, self.fulfill_tolerance, self.p_norm)
+        return uv_complete.utils.get_new_fulfilled(new_antpos, self.antpos, self.not_fulfilled, self.fulfill_tolerance, self.p_norm)
     
     def get_array_size(self):
-        return uvComplete.utils.get_array_size(self.antpos)
+        return uv_complete.utils.get_array_size(self.antpos)
     
     def get_min_distance_from_new_antpos(self, new_antpos):
-        return uvComplete.utils.get_min_distance_from_new_antpos(self.antpos, new_antpos)
+        return uv_complete.utils.get_min_distance_from_new_antpos(self.antpos, new_antpos)
     
     def get_min_distance(self):
-        return uvComplete.utils.get_min_distance(self.antpos)
+        return uv_complete.utils.get_min_distance(self.antpos)
     
     def collision_check(self):
-        return uvComplete.utils.collision_check(self.antpos, self.diameter)
+        return uv_complete.utils.collision_check(self.antpos, self.diameter)
     
     def plot_array(self, just_plot_array=False,plot_new_fulfilled=False,fig=None,ax=None,n_new_fulfilled_list=None,n_not_fulfilled_list=None,new_fulfilled_list=None):
-        uvComplete.utils.plot_array(self.antpos,self.commanded,self.fulfill_tolerance,just_plot_array,plot_new_fulfilled,fig,ax,n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list)
+        uv_complete.utils.plot_array(self.antpos,self.commanded,self.fulfill_tolerance,just_plot_array,plot_new_fulfilled,fig,ax,n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list)
         
     def get_antpos_history(self):
-        return uvComplete.utils.get_antpos_history(self.commanded,self.antpos,self.fulfill_tolerance)
+        return uv_complete.utils.get_antpos_history(self.commanded,self.antpos,self.fulfill_tolerance)
         
     def set_array_config(self):
-        self.array_config = uvComplete.utils.get_array_config(self.antpos)    
+        self.array_config = uv_complete.utils.get_array_config(self.antpos)    
         
     def get_array_config(self):
-        return uvComplete.utils.get_array_config(self.antpos)
+        return uv_complete.utils.get_array_config(self.antpos)
         
     @check_commanded
     def pick_baselines(self):
-        return uvComplete.utils.pick_baselines(self.commanded, self.antpos, self.fulfill_tolerance)
+        return uv_complete.utils.pick_baselines(self.commanded, self.antpos, self.fulfill_tolerance)
     
     @check_commanded
     def add_ant_rules(self, order = -1, show_plot = True, save_file = False,save_name='rules', verbose = True, n_max_antennas = np.inf, n_to_add = np.inf, center_at_origin = True, check_first = 'antpos', check_all_antpos = True, check_all_not_fulfilled = False, show_plot_skip = 10, second_priority = 'min_distance_from_new_antpos'):
-        self.antpos = uvComplete.rules.add_ant_rules(self.commanded,self.antpos,self.diameter,self.max_array_size,self.fulfill_tolerance,order,show_plot,save_file,save_name,verbose,n_max_antennas,n_to_add,center_at_origin,check_first,check_all_antpos,check_all_not_fulfilled,show_plot_skip,second_priority)
+        self.antpos = uv_complete.rules.add_ant_rules(self.commanded,self.antpos,self.diameter,self.max_array_size,self.fulfill_tolerance,order,show_plot,save_file,save_name,verbose,n_max_antennas,n_to_add,center_at_origin,check_first,check_all_antpos,check_all_not_fulfilled,show_plot_skip,second_priority)
     
     @check_commanded
     def add_ant_rules_parallelized(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, num_cores = 64):
-        self.antpos = uvComplete.rules.add_ant_rules_parallelized(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, num_cores = num_cores)
+        self.antpos = uv_complete.rules.add_ant_rules_parallelized(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, num_cores = num_cores)
     
     @check_commanded
     def add_ant_rules_parallelized_2(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, try_continue = True, num_cores = None):
-        self.antpos = uvComplete.rules.add_ant_rules_parallelized_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)  
+        self.antpos = uv_complete.rules.add_ant_rules_parallelized_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)  
     
     @check_commanded
     def add_ant_rules_2(self,center_at_origin = True, order = -1, n_to_add = np.inf, n_max_antennas = np.inf, check_all_commanded = False, check_all_antpos = True, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, try_continue = True, num_cores = None):
-        self.antpos = uvComplete.rules.add_ant_rules_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, order = order, n_to_add = n_to_add, n_max_antennas = n_max_antennas, check_all_commanded = check_all_commanded, check_all_antpos = check_all_antpos, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
+        self.antpos = uv_complete.rules.add_ant_rules_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, order = order, n_to_add = n_to_add, n_max_antennas = n_max_antennas, check_all_commanded = check_all_commanded, check_all_antpos = check_all_antpos, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
           
           
           

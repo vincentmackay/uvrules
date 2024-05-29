@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from IPython.display import clear_output, display
-from uvComplete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_antpos_history,plot_array,collision_check
+from uv_complete.utils import check_fulfillment, get_array_size, get_new_fulfilled, get_antpos_history,plot_array,collision_check
 
 
 def create_array_random(n=200, commanded = None, built=None, diameter=8.54,max_array_size=300, fulfill_tolerance = 0.5, always_add = False, show_plot = True, show_plot_skip = 10, verbose = True,max_failed_attempts = 1e5, random_seed = 11141):

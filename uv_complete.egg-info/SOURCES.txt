@@ -1,0 +1,13 @@
+README.md
+setup.py
+uv_complete/__init__.py
+uv_complete/antarray.py
+uv_complete/nonrandom.py
+uv_complete/random.py
+uv_complete/rules.py
+uv_complete/utils.py
+uv_complete.egg-info/PKG-INFO
+uv_complete.egg-info/SOURCES.txt
+uv_complete.egg-info/dependency_links.txt
+uv_complete.egg-info/requires.txt
+uv_complete.egg-info/top_level.txt

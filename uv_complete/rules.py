@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 import itertools
 import pickle
-from uvComplete.utils import check_fulfillment,check_fulfillment_idx,check_fulfillment_old, get_array_size, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_antpos_history
+from uv_complete.utils import check_fulfillment,check_fulfillment_idx,check_fulfillment_old, get_array_size, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_antpos_history
 from multiprocessing import Pool, cpu_count
 import time
 from datetime import timedelta
