@@ -137,14 +137,18 @@ class AntArray(object):
         self.antpos = uvComplete.rules.add_ant_rules_parallelized(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, num_cores = num_cores)
     
     @check_commanded
-    def add_ant_rules_parallelized_2(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, try_continue = True, num_cores = 64):
-        self.antpos = uvComplete.rules.add_ant_rules_parallelized_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
-        
-        
-        
-        
-        
-        
+    def add_ant_rules_parallelized_2(self,center_at_origin = True, n_to_add = np.inf, n_max_antennas = np.inf, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, try_continue = True, num_cores = None):
+        self.antpos = uvComplete.rules.add_ant_rules_parallelized_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, n_to_add = n_to_add, n_max_antennas = n_max_antennas, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)  
+    
+    @check_commanded
+    def add_ant_rules_2(self,center_at_origin = True, order = -1, n_to_add = np.inf, n_max_antennas = np.inf, check_all_commanded = False, check_all_antpos = True, save_file = True, save_name = 'para_default_name', verbose = True, show_plot = False, try_continue = True, num_cores = None):
+        self.antpos = uvComplete.rules.add_ant_rules_2(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, order = order, n_to_add = n_to_add, n_max_antennas = n_max_antennas, check_all_commanded = check_all_commanded, check_all_antpos = check_all_antpos, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
+          
+          
+          
+          
+          
+          
         
         
         

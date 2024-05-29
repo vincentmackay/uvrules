@@ -8,11 +8,11 @@ Created on Thu Feb 15 12:27:51 2024
 
 import numpy as np
 import matplotlib.pyplot as plt
-from IPython.display import display, clear_output
+from IPython.display import clear_output
 import itertools
 import pickle
-from uvComplete.utils import check_fulfillment,check_fulfillment_idx,check_fulfillment_old, get_array_size, get_new_fulfilled_old, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_antpos_history
-from multiprocessing import Pool
+from uvComplete.utils import check_fulfillment,check_fulfillment_idx,check_fulfillment_old, get_array_size, get_new_fulfilled, get_min_distance_from_new_antpos, collision_check,plot_array,get_antpos_history
+from multiprocessing import Pool, cpu_count
 import time
 from datetime import timedelta
 import os
@@ -585,9 +585,13 @@ def find_local_extrema_2(chunk, antpos, commanded, not_fulfilled_idx, fulfill_to
 
 
 
-def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_array_size = None, fulfill_tolerance = 0.5, center_at_origin=True, n_to_add = -1, n_max_antennas = -1, save_file = False, save_name = 'default_name', show_plot = False, verbose = True,try_continue = True, num_cores = 64):
+def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_array_size = None, fulfill_tolerance = 0.5, center_at_origin=True, n_to_add = -1, n_max_antennas = -1, save_file = False, save_name = 'default_name', show_plot = False, verbose = True,try_continue = True, num_cores = None):
     
     n_added = 0
+    
+    if num_cores is None:
+        num_cores = cpu_count()
+    
     
     starting_from_scratch, antpos, step_time_array, rejected_combinations = initialize_antpos(antpos,try_continue,save_name)
 
@@ -676,8 +680,7 @@ def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_
                 plt.pause(0.01)
             
             print(f'Array now has {len(antpos)} antennas.')
-            print(f'Length of step_time_array: {len(step_time_array)}.')
-            print('Array size is now: {:.2f} wavelengths.'.format(global_min_array_size))
+            print('Array size is now: {:.2f} meters.'.format(global_min_array_size))
             print('{:d} newly fulfilled points.'.format(global_max_n_new_fulfilled))
             print('{:d} total antennas antpos.'.format(len(antpos)))
             print('{:d}/{:d} commanded points remain to be fulfilled.'.format(len(not_fulfilled_idx),len(commanded)))
@@ -697,6 +700,151 @@ def add_ant_rules_parallelized_2(commanded, antpos = None, diameter = None, max_
         print('Done.')
 
 
+def add_ant_rules_2(commanded, antpos = None, diameter = None, max_array_size = None, fulfill_tolerance = 0.5, order = 1, center_at_origin=True, n_to_add = -1, n_max_antennas = -1, check_all_commanded = False, check_all_antpos = True, save_file = False, save_name = 'default_name', show_plot = False, verbose = True,try_continue = True, num_cores = 64):
+    
+    n_added = 0
+    
+    
+    
+    if num_cores is None:
+        num_cores = cpu_count()
+    
+    starting_from_scratch, antpos, step_time_array, rejected_combinations = initialize_antpos(antpos,try_continue,save_name)
+
+
+
+    if verbose:
+        if check_all_commanded:
+            check_all_commanded_str = 'All commanded baselines will be checked at each iteration. This may be very long. For a faster solution, set check_all_commanded = False.'
+            print(check_all_commanded_str)
+        total_start_time = time.time()
+        print('Before even beginning, have:')
+        print('{:d} antennas in the antpos array'.format(len(antpos)))
+    
+    
+    # if starting from zero, do the first iteration, which is trivial
+    if starting_from_scratch:
+        antpos = np.vstack([antpos, commanded[0]])
+        step_time_array.append(0.0)
+    
+    # check fulfillment
+    fulfilled_idx, not_fulfilled_idx = check_fulfillment_idx(commanded, antpos, fulfill_tolerance)
+
+
+    i_commanded = 0
+    i_antpos = 0
+
+    rejected_combinations = []
+    while(len(not_fulfilled_idx)>=1 and not n_added==n_to_add and not len(antpos)==n_max_antennas):
+        
+        if verbose:
+            step_start_time = time.time()
+        
+        
+        if check_all_commanded:
+            all_commanded = not_fulfilled_idx
+        else:
+            all_commanded = [not_fulfilled_idx[i_commanded * (-1+order)//2]]
+        if check_all_antpos:
+            all_antpos = range(len(antpos))
+        else:
+            all_antpos = [i_antpos]
+        
+        all_combinations = set(itertools.product(all_antpos,all_commanded,range(2)))
+        
+        
+        remaining_combinations = list(all_combinations - set(rejected_combinations))      
+        
+        chunks = list(chunkify(remaining_combinations, np.max([len(remaining_combinations) // num_cores,1])))
+        
+        args_for_starmap = [(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin) for chunk in chunks]
+        # Run parallel computation
+        with Pool(processes = num_cores) as pool:
+            results = pool.starmap(find_local_extrema_2, args_for_starmap)
+        
+        # Aggregate results
+        global_success = False
+        global_max_n_new_fulfilled = 0
+        global_max_min_distance_from_new_antpos = 0
+        global_min_array_size = 0
+        global_favored_i = global_favored_j = global_favored_k = None
+        
+        for result in results:
+            if result[0] == True:
+                global_success = True
+            if result[1] > global_max_n_new_fulfilled:
+                global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
+            elif result[1] == global_max_n_new_fulfilled:
+                if result[2]>global_max_min_distance_from_new_antpos:
+                    global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
+                elif result[2]==global_max_min_distance_from_new_antpos:
+                    if result[3]>global_min_array_size:
+                        global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
+            if result[7] is not None:
+                rejected_combinations = list( set(rejected_combinations) | set(result[7]))
+                
+        if global_success == False:
+            if (check_all_commanded and check_all_antpos) or (i_commanded >= len(not_fulfilled_idx) and check_all_antpos) or (i_antpos >= len(antpos) and check_all_commanded) or (i_antpos >= len(antpos) and i_commanded >= len(not_fulfilled_idx)):
+                print('Array is full for this set of parameters, quitting.')
+                return antpos
+                break
+            elif not check_all_antpos and check_all_commanded:
+                if i_antpos<len(antpos):
+                    i_antpos+=1
+            elif check_all_antpos and not check_all_commanded:
+                if i_commanded<len(not_fulfilled_idx):
+                    i_commanded+=1
+            else:
+                if i_antpos<=len(antpos):
+                    i_antpos+=1
+                else:
+                    i_antpos = 0
+                    i_commanded += 1
+                    
+        else:
+            antpos = np.vstack([antpos,antpos[global_favored_i] + (-1)**global_favored_k*commanded[global_favored_j]])
+            fulfilled_idx, not_fulfilled_idx = check_fulfillment_idx(commanded,antpos, fulfill_tolerance)
+            n_added += 1
+            if save_file:
+                # Saving the variable to disk
+                np.save('antpos_'+save_name+'.npy',antpos)
+                np.save('step_time_array_'+save_name+'.npy',np.array(step_time_array))
+                np.save('rejected_combinations_'+save_name+'.npy',np.array(rejected_combinations))
+                
+            if verbose:
+                current_time = time.time()
+                step_time = current_time - step_start_time
+                step_time_str = str(timedelta(seconds=int(step_time)))
+                total_time = current_time - total_start_time
+                step_time_array.append(step_time)
+                total_time_str = str(timedelta(seconds=int(total_time)))
+                if show_plot:
+                    clear_output(wait=True)
+                    
+                    n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list = get_antpos_history(commanded, antpos, fulfill_tolerance)
+                    fig,ax=plot_array(antpos,commanded,fulfill_tolerance,just_plot_array=False,plot_new_fulfilled=True,n_new_fulfilled_list = n_new_fulfilled_list,n_not_fulfilled_list=n_not_fulfilled_list,new_fulfilled_list=new_fulfilled_list, fulfilled = commanded[fulfilled_idx], not_fulfilled = commanded[not_fulfilled_idx],step_time_array=step_time_array)
+                    plt.pause(0.01)
+                if check_all_commanded:
+                    print(check_all_commanded_str)
+                print(f'Array now has {len(antpos)} antennas.')
+                print('Array now spans {:.2f} meters in size.'.format(global_min_array_size))
+                print('{:d} newly fulfilled points at last iteration.'.format(global_max_n_new_fulfilled))
+                print('{:d}/{:d} commanded points remain to be fulfilled after last iteration.'.format(len(not_fulfilled_idx),len(commanded)))
+                print(f'Number of rejected combinations after last iteration: {len(rejected_combinations)}')
+                print(time.strftime('Local time after last iteration: %H:%M:%S', time.localtime()))
+                
+                print(f'Time for last step: {step_time_str}.')
+                print('Total time' + (len(not_fulfilled_idx)>0)*' so far' + f': {total_time_str}.')
+    
+    
+
+    if save_file:
+        # Saving the variable to disk
+        np.save('antpos_'+save_name+'.npy',antpos)
+
+    return antpos
+    if verbose:
+        print('Done.')
 
 
 
