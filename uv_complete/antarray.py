@@ -12,7 +12,7 @@ from astropy import constants
 
 class AntArray(object):
     
-    def __init__(self, diameter=10, max_array_size = None, mid_freq = 140e6, bandwidth = 20e6, freq_step = 0.1e6, packing_density = 2, min_bl_lambda = 10, max_bl_lambda = 100, fulfill_tolerance = None, use_midband = True, p_norm = np.inf):
+    def __init__(self, diameter=10, max_array_size = None, mid_freq = 140e6, bandwidth = 20e6,  packing_density = 2, min_bl_lambda = 10, max_bl_lambda = 100, fulfill_tolerance = None, use_midband = True, p_norm = np.inf):
         '''
             Initialize the AntArray object
             
@@ -33,8 +33,7 @@ class AntArray(object):
         self.diameter = diameter
         self.mid_freq = mid_freq
         self.bandwidth = bandwidth
-        self.freq_step = freq_step
-        self.freqs = np.arange(self.mid_freq - self.bandwidth/2, self.mid_freq + self.bandwidth/2+self.freq_step,self.freq_step)
+        self.freqs = np.array([self.mid_freq - self.bandwidth/2, self.mid_freq + bandwidth/2])
         self.wavelengths = constants.c.value / self.freqs
         self.min_bl_lambda = min_bl_lambda
         self.max_bl_lambda = max_bl_lambda
@@ -67,7 +66,7 @@ class AntArray(object):
             self.fulfill_tolerance = fulfill_tolerance
         self.max_array_size = max_array_size
         
-        self.generate_commanded(show_plot=False)
+        self.generate_commanded_points(show_plot=False)
             
         
         self.array_config = uv_complete.utils.get_array_config(self.antpos)
@@ -81,8 +80,11 @@ class AntArray(object):
         return wrapper
     
         
-    def generate_commanded(self, show_plot = True, ax = None):
-        self.commanded = uv_complete.utils.generate_uv_grid(self.uv_cell_size, self.min_bl, self.max_bl, show_plot, ax)
+    def generate_commanded_points(self, show_plot = True, ax = None):
+        self.commanded = uv_complete.utils.generate_commanded_points(self.uv_cell_size, self.min_bl, self.max_bl, show_plot, ax)
+      
+    def generate_commanded_grid(self, show_plot = True, ax = None):
+        self.commanded_grid = uv_complete.utils.generate_commanded_grid(uv_cell_size = self.uv_cell_size, min_bl_lambda= self.min_bl_lambda, max_bl_lambda=self.max_bl_lambda, show_plot = show_plot, ax = ax)
         
     
     @check_commanded
@@ -126,7 +128,7 @@ class AntArray(object):
     
     @check_commanded
     def add_ant_rules(self,center_at_origin = True, order = -1, n_to_add = np.inf, n_max_antennas = np.inf, compare_all_commanded = False, compare_all_antpos = True, save_file = True, save_name = None, verbose = True, show_plot = True, try_continue = True, num_cores = None):
-        self.antpos = uv_complete.rules.add_ant_rules(self.commanded, self.antpos, self.diameter, self.max_array_size, self.fulfill_tolerance, center_at_origin = center_at_origin, order = order, n_to_add = n_to_add, n_max_antennas = n_max_antennas, compare_all_commanded = compare_all_commanded, compare_all_antpos = compare_all_antpos, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
+        self.antpos = uv_complete.rules.add_ant_rules(commanded = self.commanded, antpos = self.antpos, diameter = self.diameter, fulfill_tolerance = self.fulfill_tolerance, max_array_size = self.max_array_size, center_at_origin = center_at_origin, order = order, n_to_add = n_to_add, n_max_antennas = n_max_antennas, compare_all_commanded = compare_all_commanded, compare_all_antpos = compare_all_antpos, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
           
           
           

@@ -73,7 +73,7 @@ def get_antpos_history(commanded, antpos, fulfill_tolerance):
                 n_not_fulfilled_list.append(len(not_fulfilled_temp))
     return n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list
 
-def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_array = False, plot_new_fulfilled = False, fig=None,ax=None,n_new_fulfilled_list = None,n_not_fulfilled_list = None,new_fulfilled_list = None, fulfilled = None, not_fulfilled = None,step_time_array = None):
+def plot_array(antpos, commanded = None, diameter = None, fulfill_tolerance = 0.5, just_plot_array = False, plot_new_fulfilled = False, fig=None,ax=None,n_new_fulfilled_list = None,n_not_fulfilled_list = None,new_fulfilled_list = None, fulfilled = None, not_fulfilled = None,step_time_array = None):
     
     if commanded is None:
         just_plot_array=True
@@ -123,7 +123,14 @@ def plot_array(antpos, commanded = None, fulfill_tolerance = 0.5, just_plot_arra
         v_min = 0
         v_max = len(antpos)
         color_scale_antpos = np.linspace(0,1,len(antpos))
-        array_scatter_plot = ax[1,0].scatter(antpos[:,0],antpos[:,1],c=colormap(color_scale_antpos))
+        
+        if diameter is None:
+            radius = 5
+        else:
+            radius = diameter / 2
+            
+        marker_size = (radius * 72 / fig.dpi) ** 2
+        array_scatter_plot = ax[1,0].scatter(antpos[:,0],antpos[:,1],s=marker_size, c=colormap(color_scale_antpos))
         ax[1,0].set_title(f'Array ({len(antpos)} antennas)')
         ax[1,0].set_xlabel(r'EW [m]')
         ax[1,0].set_ylabel(r'NS [m]')
@@ -240,6 +247,21 @@ def get_new_fulfilled(new_antpos,antpos,not_fulfilled,fulfill_tolerance,p_norm =
     
     return new_fulfilled
 
+
+def get_new_fulfilled_grid(new_antpos_grid,antpos_grid,not_fulfilled_grid):
+    # Returns how many new commanded uvs are fulfilled when adding new_ant to antpos
+    
+    # Compute new uvs
+    new_uvs_grid = antpos_grid - new_antpos_grid
+    new_uvs_grid *= nonzero_sign(new_uvs_grid[:,1].reshape(-1,1))
+    idx_v0_grid = new_uvs_grid[:, 1] == 0
+    new_uvs_grid[idx_v0_grid, 0] = np.abs(new_uvs_grid[idx_v0_grid, 0])
+    
+    new_fulfilled_grid = np.intersect1d(new_uvs_grid('i,i'),not_fulfilled_grid('i,i'))
+    new_fulfilled_grid = new_fulfilled_grid.view(new_uvs_grid.dtype).reshape(-1,2)
+    
+    return new_fulfilled_grid
+
 # RETIRED, TRY TO AVOID USING
 def check_fulfillment_old(commanded, antpos, fulfill_tolerance, p_norm = np.inf, flip_tolerance = 0.0):
     # Returns the number of fulfilled and unfulfilled points, along with the corresponding arrays
@@ -344,7 +366,7 @@ def antpos_to_uv(antpos, flip_tolerance = 0.0, unique_only = False):
     return np.asarray(uv_points)
 
 
-def generate_uv_grid(uv_cell_size=1., min_bl=10, max_bl=100, show_plot = True, ax = None):
+def generate_commanded_points(uv_cell_size=1., min_bl=10, max_bl=100, show_plot = True, ax = None):
     # Returns a grid of uv points in a half annulus, without the (u<0,v=0) segment
     
     uv_points = []
@@ -381,6 +403,45 @@ def generate_uv_grid(uv_cell_size=1., min_bl=10, max_bl=100, show_plot = True, a
     
     return uv_points#uv_dict
 
+def generate_commanded_grid(uv_cell_size = 0.5, min_bl_lambda=10, max_bl_lambda=100, show_plot = True, ax = None):
+    # Returns a grid of uv points in a half annulus, without the (u<0,v=0) segment
+    
+    uv_points = []
+    
+    max_bl_grid = max_bl_lambda / uv_cell_size
+    min_bl_grid = min_bl_lambda / uv_cell_size
+    
+    max_u_grid = max_bl_grid
+    min_u_grid= -max_bl_grid
+    max_v_grid = max_bl_grid
+    min_v_grid = 0
+    
+    for u in np.arange(min_u_grid, max_u_grid + 1, 1):
+        for v in np.arange(min_v_grid, max_v_grid + 1, 1):
+            distance = np.sqrt(u**2 + v**2)
+            if min_bl_grid < distance <= max_bl_grid:
+                if not (u<0 and v==0):
+                    #print(u,v)
+                    uv_points.append((u, v))
+    uv_points = np.asarray(uv_points)
+    if show_plot:
+        if ax is None:
+            fig,ax = plt.subplots(1,1,figsize=[10,5])
+        ax.plot(uv_points[:,0],uv_points[:,1],'.',markersize=1,color='k')
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_title('Commanded grid points')
+        ax.set_xlim(min_u_grid-1, max_u_grid+1)
+        ax.set_ylim(min_v_grid-1, max_v_grid+1)
+        ax.set_xlabel(r'$u$ [uv_cell_size]')
+        ax.set_ylabel(r'$v$ [uv_cell_size]')
+        ax.grid()
+        
+        
+    uv_points = uv_points[np.argsort(np.linalg.norm(uv_points, axis=1))]
+    
+    #uv_dict = {i:uv_points[i] for i in range(len(uv_points))}
+    
+    return uv_points#uv_dict
 
 def generate_uv_random(uv_cell_size, r_min, r_max, fulfill_tolerance):
     # Returns a grid of uv points in a half annulus, randomly distributed.
