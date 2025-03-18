@@ -116,14 +116,17 @@ class AntArray(object):
     
     def get_n_baselines_involved(self):
         return uv_complete.utils.get_n_baselines_involved(self.antpos, self.commanded, self.fulfill_tolerance)
+    
+    def get_n_baselines_involved_unique(self):
+        return uv_complete.utils.get_n_baselines_involved_unique(self.antpos, self.commanded, self.fulfill_tolerance)
         
     @check_commanded
     def select_baselines(self):
         return uv_complete.utils.select_baselines(self.commanded, self.antpos, self.fulfill_tolerance)
     
     @check_commanded
-    def add_ant_rules(self,center_at_origin = True, commanded_order = -1, antpos_order = 1, order_antpos_by_magnitude = False, n_to_add = np.inf, n_max_antennas = np.inf, compare_all_commanded = False, compare_all_antpos = True, start_from = None, save_file = True, save_name = None, verbose = True, show_plot = True, try_continue = True, num_cores = None):
-        self.antpos = uv_complete.rules.add_ant_rules(commanded = self.commanded, antpos = self.antpos, diameter = self.diameter, fulfill_tolerance = self.fulfill_tolerance, max_array_size = self.max_array_size, center_at_origin = center_at_origin, commanded_order = commanded_order, antpos_order = antpos_order,  order_antpos_by_magnitude = order_antpos_by_magnitude, n_to_add = n_to_add, n_max_antennas = n_max_antennas, compare_all_commanded = compare_all_commanded, compare_all_antpos = compare_all_antpos, start_from = start_from, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
+    def add_ant_rules(self,center_at_origin = True, commanded_order = -1, antpos_order = 1, order_antpos_by_magnitude = False, n_to_add = np.inf, n_max_antennas = np.inf, compare_all_commanded = False, compare_all_antpos = True, maximize_antenna_spacing = True, start_from = None, save_file = True, save_name = None, verbose = True, show_plot = True, try_continue = True, num_cores = None):
+        self.antpos = uv_complete.rules.add_ant_rules(commanded = self.commanded, antpos = self.antpos, diameter = self.diameter, fulfill_tolerance = self.fulfill_tolerance, max_array_size = self.max_array_size, center_at_origin = center_at_origin, commanded_order = commanded_order, antpos_order = antpos_order,  order_antpos_by_magnitude = order_antpos_by_magnitude, n_to_add = n_to_add, n_max_antennas = n_max_antennas, compare_all_commanded = compare_all_commanded, compare_all_antpos = compare_all_antpos, maximize_antenna_spacing = maximize_antenna_spacing,start_from = start_from, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
           
     def get_redundancy_commanded(self,red_tol_lambda = None):
         self.redundancy = uv_complete.utils.get_redundancy_commanded(self.commanded,self.antpos,self.ref_wl,red_tol_lambda)

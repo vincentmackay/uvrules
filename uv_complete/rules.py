@@ -108,9 +108,11 @@ def initialize_antpos(antpos,commanded,fulfill_tolerance,try_continue,start_from
         n_new_fulfilled_list.append(1)
         n_not_fulfilled_list.append(len(commanded) - 1)
         new_fulfilled_list.append( get_new_fulfilled(new_antpos,antpos,commanded, fulfill_tolerance) )
-        
+    
+    array_size = get_array_size(antpos)
     print('Initialization over.')
-    return starting_from_scratch, antpos, step_time_array, rejected_combinations, efficiency_array, n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list, n_not_fulfilled
+
+    return starting_from_scratch, antpos, array_size, step_time_array, rejected_combinations, efficiency_array, n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list, n_not_fulfilled
         
         
         
@@ -152,17 +154,18 @@ def try_new_antpos(antpos, new_antpos, commanded, fulfill_tolerance, diameter, m
         
     return collision_pass, array_size_pass, temp_array_size
 
-def find_local_extrema(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin):
+def find_local_extrema(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin,maximize_antenna_spacing):
 # This function is used for the parallelization
     max_n_new_fulfilled = 0
-    min_array_size = get_array_size(antpos)
     max_min_distance_from_new_antpos = 0
     favored_i = favored_j = favored_k = None
     success = False
     newly_rejected_combinations = []
+    min_array_size = np.inf
     for i,j,k in chunk:
         new_antpos = antpos[i] + (-1)**k * commanded[j]
         collision_pass, array_size_pass, temp_array_size = try_new_antpos(antpos, new_antpos, commanded,fulfill_tolerance, diameter, max_array_size,center_at_origin)
+        
         if collision_pass and array_size_pass:
             success = True    
             # check how many are newly fulfilled
@@ -178,13 +181,12 @@ def find_local_extrema(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tole
                 favored_j = j
                 favored_k = k
             elif len(new_fulfilled) == max_n_new_fulfilled:
-                if min_distance_from_new_antpos > max_min_distance_from_new_antpos:
+                if min_distance_from_new_antpos > max_min_distance_from_new_antpos and maximize_antenna_spacing:
                     max_min_distance_from_new_antpos = min_distance_from_new_antpos
                     favored_i = i
                     favored_j = j
                     favored_k = k
-                elif min_distance_from_new_antpos == max_min_distance_from_new_antpos:
-                    if temp_array_size < min_array_size:
+                elif temp_array_size < min_array_size:
                         min_array_size = temp_array_size
                         favored_i = i
                         favored_j = j
@@ -196,7 +198,7 @@ def find_local_extrema(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tole
 
 
 
-def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance = 0.5, max_array_size = None,  commanded_order = 1, antpos_order = 1, order_antpos_by_magnitude = False, center_at_origin=True, n_to_add = -1, n_max_antennas = -1, compare_all_commanded = False, compare_all_antpos = True, start_from = None, save_file = False, save_name = None, show_plot = True, verbose = True,try_continue = True, num_cores = 64):
+def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance = 0.5, max_array_size = None,  commanded_order = 1, antpos_order = 1, order_antpos_by_magnitude = False, center_at_origin=True, n_to_add = -1, n_max_antennas = -1, compare_all_commanded = False, compare_all_antpos = True, maximize_antenna_spacing = True, start_from = None, save_file = False, save_name = None, show_plot = True, verbose = True,try_continue = True, num_cores = 64):
     
     n_added = 0
     if save_name is None:
@@ -206,7 +208,7 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
     if num_cores is None:
         num_cores = cpu_count()
     
-    starting_from_scratch, antpos, step_time_array, rejected_combinations, efficiency_array, n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list, n_not_fulfilled = initialize_antpos(antpos, commanded, fulfill_tolerance, try_continue, start_from, save_name)
+    starting_from_scratch, antpos, array_size, step_time_array, rejected_combinations, efficiency_array, n_new_fulfilled_list, n_not_fulfilled_list, new_fulfilled_list, n_not_fulfilled = initialize_antpos(antpos, commanded, fulfill_tolerance, try_continue, start_from, save_name)
 
 
     if verbose:
@@ -218,10 +220,7 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
     
     
 
-    # check fulfillment
-    fulfilled_idx, not_fulfilled_idx = check_fulfillment_idx(commanded, antpos, fulfill_tolerance)
-    array_is_complete = (len(not_fulfilled_idx)==0)
-    
+
     if commanded_order==0:
         if verbose:
             print('Ordering the commanded points randomly.')
@@ -229,6 +228,10 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
     else:
         commanded = commanded[np.argsort(commanded_order * np.linalg.norm(commanded, axis=1))]
 
+    # check fulfillment
+    fulfilled_idx, not_fulfilled_idx = check_fulfillment_idx(commanded, antpos, fulfill_tolerance)
+    array_is_complete = (len(not_fulfilled_idx)==0)
+    
 
     i_commanded = 0
     i_antpos = 0
@@ -240,11 +243,13 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
     if save_file:
         np.save('commanded_'+save_name+'.npy',commanded)
     
+    if n_not_fulfilled==1:
+        print(f'Only {commanded[not_fulfilled_idx[0]]} remains to be fulfilled')
+    
     while(len(not_fulfilled_idx)>=1 and not n_added==n_to_add and not len(antpos)==n_max_antennas or not (starting_from_scratch and array_is_complete)):
         global_success = array_is_complete
-
+        
         if not array_is_complete:
-    
             if compare_all_commanded:
                 commanded_idx = not_fulfilled_idx
             else:
@@ -279,14 +284,14 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
             
             remaining_combinations = list(all_combinations - set(rejected_combinations))  
             
+            
+            
             if compare_all_commanded or compare_all_antpos:
                 
                     
                 
                 chunks = list(chunkify(remaining_combinations, np.max([len(remaining_combinations) // num_cores,num_cores])))
-                
-                
-                args_for_starmap = [(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin) for chunk in chunks]
+                args_for_starmap = [(chunk, antpos, commanded, not_fulfilled_idx, fulfill_tolerance,diameter,max_array_size,center_at_origin,maximize_antenna_spacing) for chunk in chunks]
                 # Run parallel computation
                 with Pool(processes = num_cores) as pool:
                     results = pool.starmap(find_local_extrema, args_for_starmap)
@@ -297,17 +302,15 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
                 global_max_min_distance_from_new_antpos = 0
                 global_min_array_size = 0
                 global_favored_i = global_favored_j = global_favored_k = None
-                
                 for result in results:
                     if result[0] == True:
                         global_success = True
                     if result[1] > global_max_n_new_fulfilled:
                         global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
                     elif result[1] == global_max_n_new_fulfilled:
-                        if result[2]>global_max_min_distance_from_new_antpos:
+                        if result[2]>global_max_min_distance_from_new_antpos and maximize_antenna_spacing:
                             global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
-                        elif result[2]==global_max_min_distance_from_new_antpos:
-                            if result[3]>global_min_array_size:
+                        elif result[3]<global_min_array_size:
                                 global_max_n_new_fulfilled,global_max_min_distance_from_new_antpos,global_min_array_size,global_favored_i,global_favored_j,global_favored_k = result[1:-1]
                     if result[7] is not None:
                         rejected_combinations = list( set(rejected_combinations) | set(result[7]))
@@ -346,8 +349,7 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
                         rejected_combinations = list( set(rejected_combinations) | set([(i,j,k)]))
                     
             
-        if global_success == True or (array_is_complete and not starting_from_scratch):
-            
+        if global_success or (array_is_complete and not starting_from_scratch):
             n_new_fulfilled_list.append(global_max_n_new_fulfilled)
             
             n_not_fulfilled -= global_max_n_new_fulfilled
@@ -393,6 +395,8 @@ def add_ant_rules(commanded, antpos = None, diameter = None, fulfill_tolerance =
                     global_max_n_new_fulfilled = n_new_fulfilled_list[-1]
                 if compare_all_commanded:
                     print(compare_all_commanded_str)
+                print('\n')
+                print(f'Just added an antenna at {new_antpos}.')
                 print(f'Array now has {len(antpos)} antennas.')
                 print('Array now spans {:.2f} meters in size.'.format(array_size))
                 print('{:d} newly fulfilled points at last iteration.'.format(global_max_n_new_fulfilled))

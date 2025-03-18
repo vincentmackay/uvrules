@@ -196,8 +196,10 @@ def plot_array(antpos, commanded = None, diameter = None, fulfill_tolerance = 0.
                     ax[0,0].plot(new_fulfilled[:,0],new_fulfilled[:,1],'.',markersize=2,color=colormap(i/len(new_fulfilled_list)),zorder=1)
         #ax[0].scatter(fulfilled[:,0],fulfilled[:,1],c=colors_fulfilled,s=1,zorder=1)#,label='Fulfilled points')
         ax[0,0].set_title('uv plane')
-        ax[0,0].set_xlabel(r'$u$')
-        ax[0,0].set_ylabel(r'$v$')
+        ax[0,0].set_xlabel(r'$u$ [m]')
+        ax[0,0].set_ylabel(r'$v$ [m]')
+        if np.max(np.abs(commanded[:,0])) > 0 and np.max(np.abs(commanded[:,1])) > 0:
+            ax[0,0].set_aspect('equal',adjustable='box')
         
         plt.subplots_adjust(bottom=0.2)
         v_min = 0
@@ -209,8 +211,12 @@ def plot_array(antpos, commanded = None, diameter = None, fulfill_tolerance = 0.
         else:
             radius = diameter / 2
         
-        ax[1,0].set_xlim([1.1 * np.min(antpos[:,0]), 1.1 * np.max(antpos[:,0])])
-        ax[1,0].set_ylim([1.1 * np.min(antpos[:,1]), 1.1 * np.max(antpos[:,1])])
+        if np.max(np.abs(antpos[:,0]))>0:
+            ax[1,0].set_xlim([1.1 * np.min(antpos[:,0]), 1.1 * np.max(antpos[:,0])])
+        if np.max(np.abs(antpos[:,1]))>0:
+            ax[1,0].set_ylim([1.1 * np.min(antpos[:,1]), 1.1 * np.max(antpos[:,1])])
+        if np.max(np.abs(antpos[:,0])) > 0 and np.max(np.abs(antpos[:,1])) > 0:
+            ax[1,0].set_aspect('equal',adjustable='box')
         marker_size = (radius * 72 / fig.dpi) ** 2
         array_scatter_plot = ax[1,0].scatter(antpos[:,0],antpos[:,1],s=marker_size, c=colormap(color_scale_antpos))
         ax[1,0].set_title(f'Array ({len(antpos)} antennas)')
@@ -233,8 +239,8 @@ def plot_array(antpos, commanded = None, diameter = None, fulfill_tolerance = 0.
         ax_remaining = ax[0,1].twinx()
         ax_remaining.plot(np.arange(len(n_not_fulfilled_list)) + 1,n_not_fulfilled_list,color='r')
         ax_remaining.set_ylabel('Number of commanded points that\nremain to be fulfilled',color='r')
-        for i in range(2):
-            ax[i,0].set_aspect('equal', adjustable='box')
+        
+        
             
         if step_time_array is not None:
             ax[1,1].plot(np.arange(len(step_time_array))[2:]+1,step_time_array[2:], color = 'b')
@@ -736,4 +742,12 @@ def get_n_baselines_involved(antpos,commanded, fulfill_tolerance):
     n_baselines_involved = np.zeros(len(antpos),dtype = int)
     for i in range(len(antpos)):
         n_baselines_involved[i] = len(get_new_fulfilled(antpos[i], antpos, commanded,fulfill_tolerance))
+    return n_baselines_involved
+
+def get_n_baselines_involved_unique(antpos,commanded,fulfill_tolerance):
+    n_baselines_involved = np.zeros(len(antpos),dtype = int)
+    for i in range(len(antpos)):
+        temp_antpos = np.delete(antpos,i,axis=0)
+        _, not_fulfilled_idx = check_fulfillment_idx(commanded,temp_antpos,fulfill_tolerance)
+        n_baselines_involved[i] = len(not_fulfilled_idx)
     return n_baselines_involved
