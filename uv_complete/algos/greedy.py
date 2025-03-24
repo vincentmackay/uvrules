@@ -21,7 +21,7 @@ from datetime import datetime
 def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_all_antpos=False,
              order_antpos_by_magnitude=False, antpos_order=1, center_at_origin=True,
              max_array_size=None, n_max_antennas=-1, n_to_add=-1, maximize_antenna_spacing=False, 
-             save_file=False, path_to_file=None, verbose=False, show_plot=False, num_cores=None):
+             save_file=False, path_to_file=None, verbose=False, show_plot=False, num_cores=None, log_path = None):
 
     
     
@@ -63,7 +63,7 @@ def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_a
 
         # Step 6: Print status dynamically (if verbose)
         if verbose:
-            print_status(AA)
+            print_status(AA, log_path = log_path)
             
         # Step 7: Plot (if show_plot)
         if show_plot:
