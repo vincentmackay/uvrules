@@ -4,13 +4,17 @@ setup(
     name='uv_complete',
     version='0.1',
     packages=find_packages(),
-    description='A package to generate uv complete arrays.',
+    description='A package to generate uv-complete radio arrays.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    author='Vincent MacKay',    author_email='vince.mackay@gmail.com',
-    url='git@github.com:vincentmackay/uv-complete.git',
+    author='Vincent MacKay',
+    author_email='vince.mackay@gmail.com',
+    url='https://github.com/vincentmackay/uv-complete',
     install_requires=[
-        'numpy','scipy','matplotlib'
+        'numpy',
+        'scipy',
+        'matplotlib',
+        'astropy',
     ],
+    python_requires='>=3.8',
 )
-

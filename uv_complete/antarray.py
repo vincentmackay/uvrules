@@ -7,8 +7,20 @@ Created on Tue May 21 16:45:26 2024
 """
 
 import numpy as np
-import uv_complete.utils, uv_complete.rules
 from astropy import constants
+import os
+import uv_complete.utils as utils
+import uv_complete.algos.greedy
+from collections import namedtuple
+import pickle
+
+
+# Define a structured result format
+CandidateResult = namedtuple("CandidateResult", [
+    "success", "n_new_fulfilled", "min_distance", "array_size", "favored_i", "favored_j", "favored_k", "rejected_combinations"
+])
+
+
 
 class AntArray(object):
     
@@ -30,15 +42,13 @@ class AntArray(object):
                     Norm to use to check fulfillment. Should remain np.inf.
         '''
         
-        self.antpos = np.array([0.,0.])
+        self.verbose = verbose
+        self.antpos = np.array([[0.,0.]])
         
- 
-        self.ref_wl, self.ref_freq = uv_complete.utils.initialize_ref_wl(ref_wl, ref_freq, verbose)
-        self.min_bl, self.max_bl, self.min_bl_lambda, self.max_bl_lambda = uv_complete.utils.initialize_bl_range(min_bl,max_bl,min_bl_lambda,max_bl_lambda,self.ref_wl,verbose)
-        self.diameter, self.diameter_lambda = uv_complete.utils.initialize_diameter(diameter,diameter_lambda,self.ref_wl,verbose)
-            
-
-
+        self.ref_wl, self.ref_freq = self._initialize_ref_wl(ref_wl, ref_freq, verbose)
+        self.max_bl, self.max_bl_lambda = self._resolve_units(max_bl, max_bl_lambda, self.ref_wl, name = 'max_bl', verbose=self.verbose)
+        self.min_bl, self.min_bl_lambda = self._resolve_units(min_bl, min_bl_lambda, self.ref_wl, name = 'min_bl', verbose=self.verbose)
+        self.diameter, self.diameter_lambda = self._resolve_units(diameter, diameter_lambda, self.ref_wl, name = 'diameter', verbose=self.verbose)
         if self.min_bl < self.diameter:
             if verbose:
                 print('Minimum baseline shortest than diameter; impossible, setting min_bl to the value of diameter.')
@@ -48,110 +58,121 @@ class AntArray(object):
         self.not_fulfilled_idx = None
         self.p_norm = p_norm
         self.uv_cell_size = constants.c.value / self.ref_freq / self.packing_density
-        
-        
         if fulfill_tolerance is None:
             self.fulfill_tolerance = self.uv_cell_size/2
         else:
             self.fulfill_tolerance = fulfill_tolerance
         self.max_array_size = max_array_size
+        self.commanded = utils.generate_commanded_points(uv_cell_size=self.uv_cell_size, min_bl=self.min_bl, max_bl=self.max_bl,show_plot=False)
+        self.array_config = utils.get_array_config(self.antpos)
         
-        self.generate_commanded_points(show_plot=False)
-            
         
-        self.array_config = uv_complete.utils.get_array_config(self.antpos)
         
-    
-    def check_commanded(method):
-        def wrapper(self, *args, **kwargs):
-            if self.commanded is None:
-                raise ValueError("self.commanded is None. Cannot perform the operation.")
-            return method(self, *args, **kwargs)
-        return wrapper
-    
         
-    def generate_commanded_points(self, show_plot = True, ax = None):
-        self.commanded = uv_complete.utils.generate_commanded_points(self.uv_cell_size, self.min_bl, self.max_bl, show_plot, ax)
-      
-    def generate_commanded_grid(self, show_plot = True, ax = None):
-        self.commanded_grid = uv_complete.utils.generate_commanded_grid(uv_cell_size = self.uv_cell_size, min_bl_lambda= self.min_bl_lambda, max_bl_lambda=self.max_bl_lambda, show_plot = show_plot, ax = ax)
-        
+    def _resolve_units(self, value, value_lambda, ref_wl, name, default_lambda = 2, verbose=False):
+        """Generalized function to resolve values in meters and wavelengths.
     
-    @check_commanded
-    def check_fulfillment_idx(self, fulfill_tolerance = None, flip_tolerance = 0.0, return_arrays = False, verbose = False):
-        if fulfill_tolerance is None:
-            fulfill_tolerance = self.fulfill_tolerance
-        self.fulfilled_idx, self.not_fulfilled_idx = uv_complete.utils.check_fulfillment_idx(self.commanded,self.antpos,fulfill_tolerance,self.p_norm,flip_tolerance,verbose)
-        if return_arrays:
-            return self.fulfilled_idx, self.not_fulfilled_idx
+        Parameters:
+            value (float or None): The value in meters.
+            value_lambda (float or None): The value in wavelengths.
+            ref_wl (float): The reference wavelength.
+            name (str): Name of the parameter (for verbosity messages).
+            default_lambda (float): The default value in wavelengths.
+            verbose (bool): If True, prints info.
     
-    @check_commanded
-    def get_new_fulfilled(self, new_antpos):
-        self.check_fulfillment()
-        return uv_complete.utils.get_new_fulfilled(new_antpos, self.antpos, self.not_fulfilled, self.fulfill_tolerance, self.p_norm)
+        Returns:
+            (value, value_lambda): Tuple of resolved values in meters and wavelengths.
+        """
+        if value is None and value_lambda is None:
+            self._verbose_print(f"Using default {name}_lambda of {default_lambda}.")
+            value_lambda = default_lambda
+            value = value_lambda * ref_wl
+        elif value is None:
+            value = value_lambda * ref_wl
+        elif value_lambda is None:
+            value_lambda = value / ref_wl
+        return value, value_lambda
+
+
+    def _initialize_ref_wl(self,ref_wl=None, ref_freq=None, verbose=False):
+        """Initialize the reference wavelength and frequency."""
+        if ref_wl is not None and ref_freq is not None:
+            self._verbose_print("Both ref_freq and ref_wl were given. Using ref_freq.")
     
-    def get_array_size(self):
-        return uv_complete.utils.get_array_size(self.antpos)
+        if ref_freq is None and ref_wl is None:
+            self._verbose_print("Using default frequency of 150 MHz.")
+            ref_freq = 150e6
+            ref_wl = constants.c.value / ref_freq
+        elif ref_freq is None:
+            ref_freq = constants.c.value / ref_wl
+        else:
+            ref_wl = constants.c.value / ref_freq
     
-    def get_min_distance_from_new_antpos(self, new_antpos):
-        return uv_complete.utils.get_min_distance_from_new_antpos(self.antpos, new_antpos)
+        return ref_wl, ref_freq
     
-    def get_min_distance(self):
-        return uv_complete.utils.get_min_distance(self.antpos)
+
+    def _verbose_print(self, message):
+        """Helper function to print messages when verbose=True."""
+        if self.verbose:
+            print(message)
     
-    def collision_check(self):
-        return uv_complete.utils.collision_check(self.antpos, self.diameter)
-    
-    def plot_array(self, just_plot_array=False,plot_new_fulfilled=False,fig=None,ax=None,n_new_fulfilled_list=None,n_not_fulfilled_list=None,new_fulfilled_list=None):
-        uv_complete.utils.plot_array(self.antpos,self.commanded,self.fulfill_tolerance,just_plot_array,plot_new_fulfilled,fig,ax,n_new_fulfilled_list,n_not_fulfilled_list,new_fulfilled_list)
-        
-    def get_antpos_history(self):
-        return uv_complete.utils.get_antpos_history(self.commanded,self.antpos,self.fulfill_tolerance)
-        
     def set_array_config(self):
-        self.array_config = uv_complete.utils.get_array_config(self.antpos)    
+        self.array_config = utils.get_array_config(self.antpos)    
         
     def get_array_config(self):
-        return uv_complete.utils.get_array_config(self.antpos)
-    
-    def get_n_baselines_involved(self):
-        return uv_complete.utils.get_n_baselines_involved(self.antpos, self.commanded, self.fulfill_tolerance)
-    
-    def get_n_baselines_involved_unique(self):
-        return uv_complete.utils.get_n_baselines_involved_unique(self.antpos, self.commanded, self.fulfill_tolerance)
-        
-    @check_commanded
+        return utils.get_array_config(self.antpos)
+
     def select_baselines(self):
-        return uv_complete.utils.select_baselines(self.commanded, self.antpos, self.fulfill_tolerance)
+        return utils.select_baselines(self.commanded, self.antpos, self.fulfill_tolerance)
     
-    @check_commanded
-    def add_ant_rules(self,center_at_origin = True, commanded_order = -1, antpos_order = 1, order_antpos_by_magnitude = False, n_to_add = np.inf, n_max_antennas = np.inf, compare_all_commanded = False, compare_all_antpos = True, maximize_antenna_spacing = True, start_from = None, save_file = True, save_name = None, verbose = True, show_plot = True, try_continue = True, num_cores = None):
-        self.antpos = uv_complete.rules.add_ant_rules(commanded = self.commanded, antpos = self.antpos, diameter = self.diameter, fulfill_tolerance = self.fulfill_tolerance, max_array_size = self.max_array_size, center_at_origin = center_at_origin, commanded_order = commanded_order, antpos_order = antpos_order,  order_antpos_by_magnitude = order_antpos_by_magnitude, n_to_add = n_to_add, n_max_antennas = n_max_antennas, compare_all_commanded = compare_all_commanded, compare_all_antpos = compare_all_antpos, maximize_antenna_spacing = maximize_antenna_spacing,start_from = start_from, save_file=save_file, save_name = save_name, verbose=verbose, show_plot=show_plot, try_continue = try_continue, num_cores = num_cores)
-          
-    def get_redundancy_commanded(self,red_tol_lambda = None):
-        self.redundancy = uv_complete.utils.get_redundancy_commanded(self.commanded,self.antpos,self.ref_wl,red_tol_lambda)
-        return self.redundancy
-    
-    def get_redundancy_blind(self,red_tol_lambda = None):
-        self.redundancy = uv_complete.utils.get_redundancy_blind(self.antpos,self.ref_wl,self.min_bl_lambda,self.max_bl_lambda,red_tol_lambda)
-        return self.redundancy
-    
-    def get_redundancy_lattice(self,red_tol_lambda = None):
-        self.redundancy = uv_complete.utils.get_redundancy_lattice(self.antpos,self.ref_wl,red_tol_lambda)
+    def get_redundancy(self,red_tol_lambda = None):
+        self.redundancy = utils.get_redundancy_lattice(self.antpos,self.ref_wl,red_tol_lambda)
         return self.redundancy
           
-          
-          
+    
+    def save(self, path_to_file):
+        """Save the AntArray instance to disk."""
+        with open(path_to_file, 'wb') as f:
+            pickle.dump(self, f)
+            
+    def load(self, path_to_file, inplace=True):
+        """Load an AntArray instance from disk.
+
+        Parameters:
+        - path_to_file (str): Path to the saved AntArray instance.
+        - inplace (bool, default=True): 
+            - If True, update the current instance.
+            - If False, return a new AntArray object.
+
+        Returns:
+        - If inplace=False, returns a loaded AntArray object.
+        """
+        if not os.path.exists(path_to_file):
+            raise FileNotFoundError(f"Checkpoint file {path_to_file} not found.")
+
+        with open(path_to_file, "rb") as f:
+            loaded_antarray = pickle.load(f)
+
+        if inplace:
+            self.__dict__.update(loaded_antarray.__dict__)  # Overwrite current instance
+            return None  # Nothing to return
+        else:
+            return loaded_antarray  # Return a new instance
+    
+    
+   
+    def add_ant_greedy(self, **kwargs):
+        return uv_complete.algos.greedy.add_ant_greedy(self, **kwargs)
+
+   
+    
+    
         
         
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+
+
+
+
         
