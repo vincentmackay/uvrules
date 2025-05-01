@@ -37,7 +37,11 @@ def antpos_to_uv(antpos, flip_tolerance=1e-5, unique_only=False, fill_all_plane=
         uv_points = np.vstack([uv_points, -uv_points])
 
     # If unique-only mode is enabled
-    return np.unique(uv_points, axis=0) if unique_only else uv_points
+    if unique_only:
+        uv_points = np.round(uv_points, decimals=4)
+        uv_points = np.unique(uv_points, axis=0)
+    
+    return uv_points
 
 
 def get_array_size(antpos):
@@ -71,25 +75,32 @@ def collision_check(antpos,diameter):
         return get_min_distance(antpos)<=diameter
 
 
-def get_redundancy(antpos, ref_wl, red_tol_lambda = None):
+def get_redundancy(AA = None, antpos = None, ref_wl = None, red_tol_lambda = None, round = False):
+    if AA is not None:
+        antpos = AA.antpos
+        ref_wl = AA.ref_wl
     if red_tol_lambda is None:
         print('Using the default redundancy tolerance of 0.1 lambda.')
         red_tol = 0.1 * ref_wl
     else:
         red_tol = red_tol_lambda * ref_wl
     
-    uvs = antpos_to_uv(antpos)
+    uvs = antpos_to_uv(antpos, unique_only = False)
+    if round:
+        uvs = np.round(uvs, decimals=10)
+    
     # Determine the bounds of the rectangle that contains all points
     min_coords = np.floor(uvs.min(axis=0))
     
     # Map points to lattice squares using integer division
-    square_indices = ((uvs - min_coords) // red_tol).astype(int)
+    square_indices = np.floor((uvs - min_coords) / red_tol).astype(int)
+
     
     # Count the occurrences of each square index
     counts = Counter(map(tuple, square_indices))
     
-    # Return the non-zero counts as a list of integers
-    return list(counts.values())
+    # Return the non-zero counts as an array of integers
+    return np.array(list(counts.values()))
 
 
 
@@ -103,9 +114,14 @@ def compute_new_antpos(i, j, k, antpos, commanded):
 
 
 
-def check_fulfillment(commanded, antpos, fulfill_tolerance, uv_cell_size,
+def check_fulfillment(AA = None, commanded = None, antpos = None, fulfill_tolerance = None,
                       p_norm=np.inf, flip_tolerance=0.0, verbose = False):
     """Returns the indices of fulfilled and unfulfilled points."""
+    
+    if AA is not None:
+        commanded = AA.commanded
+        antpos = AA.antpos
+        fulfill_tolerance = AA.fulfill_tolerance
 
     if len(antpos.shape) < 2 or len(antpos) < 2:
         return np.array([], dtype=int), np.arange(len(commanded), dtype=int)

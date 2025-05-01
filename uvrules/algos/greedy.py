@@ -6,6 +6,9 @@ Created on Mon Mar 24 11:13:22 2025
 @author: vincent
 """
 
+### OLD IMPLEMENTATION OF ADD_ANT_RULES
+### IGNORE, WILL RETIRE EVENTUALLY
+
 import numpy as np
 from IPython.display import clear_output
 import time
@@ -13,19 +16,20 @@ from scipy.spatial import KDTree
 from multiprocessing import Pool, cpu_count
 import warnings
 from itertools import product
-import uv_complete.geometry as geometry
-import uv_complete.plotting as plotting
-import uv_complete.utils as utils
+import uvrules.geometry as geometry
+import uvrules.plotting as plotting
+import uvrules.utils as utils
 from datetime import datetime
 
 def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_all_antpos=False,
              order_antpos_by_magnitude=False, antpos_order=1, center_at_origin=True,
-             max_array_size=None, n_max_antennas=-1, n_to_add=-1, maximize_antenna_spacing=False, 
-             save_file=False, path_to_file=None, verbose=False, show_plot=False, num_cores=None, log_path = None):
+             max_array_size=None, n_max_antennas=-1, n_to_add=-1, minimize_array_size = True, maximize_antenna_spacing=False, 
+             save_file=False, path_to_file=None, verbose=True, show_plot=False, additional_output = None,
+             num_cores=None, log_path = None):
 
     
     
-    prepare_algorithm(AA,commanded_order,compare_all_commanded, center_at_origin, maximize_antenna_spacing, path_to_file, verbose, show_plot, num_cores)
+    prepare_algorithm(AA,commanded_order,compare_all_commanded, center_at_origin, max_array_size, minimize_array_size, maximize_antenna_spacing, path_to_file, verbose, show_plot, num_cores)
     last_step_time = time.time()
     while not AA.array_is_complete:
         # Step 1: Generate valid commanded-reference antenna combinations
@@ -41,7 +45,7 @@ def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_a
             global_success, best_candidate = evaluate_candidates_parallel(AA,remaining_combinations)
         else:
             global_success, best_candidate = evaluate_candidate_sequential(AA,remaining_combinations)
-
+        
         # Step 3: If no valid placement is found, terminate or iterate
         if not global_success:
             if should_terminate(AA, compare_all_commanded, compare_all_antpos):
@@ -50,7 +54,7 @@ def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_a
             continue  # Otherwise, iterate to the next candidate
 
         # Step 4: Apply placement
-        apply_placement(AA,best_candidate)
+        place_antenna(AA,best_candidate)
         # Track time taken to place this antenna
         step_time = time.time() - last_step_time
         AA.history["step_time"].append(step_time)
@@ -63,25 +67,25 @@ def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_a
 
         # Step 6: Print status dynamically (if verbose)
         if verbose:
-            print_status(AA, log_path = log_path)
+            print_status(AA, additional_output = additional_output, log_path = log_path)
             
         # Step 7: Plot (if show_plot)
         if show_plot:
-            AA.plot_fig, AA.plot_ax = plotting.plot_array(AA, AA.plot_fig, AA.plot_ax)
+            AA.plot_fig, AA.plot_ax = plotting.plot_history(AA, AA.plot_fig, AA.plot_ax)
 
         # Start the timer now such that it isn't affected by plotting and printing
         last_step_time = time.time()            
 
 
         # Step 8: Check stopping conditions
-        if AA.array_is_complete or (0 < n_to_add == AA.n_added):
+        if AA.array_is_complete or (0 < n_to_add == AA.n_added) or (0 < n_max_antennas <= len(AA.antpos)):
             break
 
     print("Done.")
     
 
 
-def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_origin, maximize_antenna_spacing, path_to_file, verbose, show_plot, num_cores):
+def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_origin, max_array_size, minimize_array_size, maximize_antenna_spacing, path_to_file, verbose, show_plot, num_cores):
     """Handles initialization and setup logic, assuming the AntArray instance is already loaded if needed."""
     
     # ====== STEP 1: Determine If Starting from Scratch ======
@@ -107,9 +111,17 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
             "rejected_combinations": [],# Now stored in history
         }
         AA.n_not_fulfilled = len(AA.commanded)
-        AA.n_added = 0  # Track number of antennas added
+    elif not hasattr(AA, 'history'):
+        AA.history = {
+            "n_new_fulfilled": [0],
+            "n_fulfilled": [0],
+            "n_not_fulfilled": [len(AA.commanded)],
+            "new_fulfilled": [],
+            "step_time": [0.0],
+            "efficiency": [1],
+            "rejected_combinations": [],# Now stored in history
+        }
     
-     
     # ====== STEP 2: Setup Metadata ======
     if path_to_file is None:
         AA.path_to_file = './AntArray_'+datetime.now().strftime("%Y%m%d_%H%M%S")+'.pkl'
@@ -140,10 +152,9 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
     # ====== STEP 5: Fulfillment Check ======
 
     AA.fulfilled_idx, AA.not_fulfilled_idx = geometry.check_fulfillment(
-        AA.commanded,
-        AA.antpos,
-        AA.fulfill_tolerance,
-        AA.uv_cell_size,
+        commanded = AA.commanded,
+        antpos = AA.antpos,
+        fulfill_tolerance = AA.fulfill_tolerance,
     )
     
 
@@ -152,7 +163,7 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
     AA.array_is_complete = len(AA.not_fulfilled_idx) == 0
     AA.not_fulfilled_array = AA.commanded[AA.not_fulfilled_idx]
     AA.not_fulfilled_tree = KDTree(AA.not_fulfilled_array)
-
+    AA.n_not_fulfilled = len(AA.not_fulfilled_idx)
 
     # Initial indices for the algorithm
     AA.i_commanded = 0
@@ -160,8 +171,13 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
 
     # ====== STEP 6: Other Attributes ======
     AA.center_at_origin = center_at_origin
+    if max_array_size is not None:
+        AA.max_array_size = max_array_size
+    AA.minimize_array_size = minimize_array_size
     AA.maximize_antenna_spacing = maximize_antenna_spacing
     AA.antpos_norms = np.linalg.norm(AA.antpos, axis=1)
+    AA.n_added = 0  # Track number of antennas added for this given run
+    # is always zero regardless of if starting from scratch
 
     # ====== STEP 7: Verbose Output for Fulfillment Status and Plotting ======
     if verbose and AA.n_not_fulfilled == 1:
@@ -246,7 +262,7 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
     # Step 1: Split combinations into chunks for parallel processing
     chunks = list(chunkify(AA,remaining_combinations, max(len(remaining_combinations) // AA.num_cores, AA.num_cores)))
     args_for_starmap = [(chunk, AA.antpos, AA.commanded, AA.not_fulfilled_tree, AA.not_fulfilled_array,
-                 AA.fulfill_tolerance, AA.diameter, AA.max_array_size, AA.center_at_origin,
+                 AA.fulfill_tolerance, AA.diameter, AA.max_array_size, AA.center_at_origin, AA.minimize_array_size,
                  AA.maximize_antenna_spacing, try_new_antpos, geometry.get_min_distance_from_new_antpos, AA.uv_cell_size)
                 for chunk in chunks]
 
@@ -263,7 +279,7 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
 
     for result in results:
         success, n_new_fulfilled, min_spacing, array_size, i, j, k, rejected_combos = result
-
+        
         if success:
             global_success = True
 
@@ -275,13 +291,12 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
             best_size_metric = array_size
 
         elif n_new_fulfilled == best_fulfilled_count:
-            # If maximizing spacing, prioritize placements with larger minimum spacing
-            if AA.maximize_antenna_spacing and min_spacing > best_spacing_metric:
+            if AA.minimize_array_size and array_size < best_size_metric:
                 best_candidate = (i, j, k)
                 best_spacing_metric = min_spacing
                 best_size_metric = array_size
-            # Otherwise, minimize array size
-            elif array_size < best_size_metric:
+            # Otherwise, prioritize placements with larger minimum spacing
+            elif AA.maximize_antenna_spacing and min_spacing > best_spacing_metric:
                 best_candidate = (i, j, k)
                 best_size_metric = array_size
 
@@ -300,7 +315,6 @@ def evaluate_candidate_sequential(AA, remaining_combinations):
 
     for i, j, k in remaining_combinations:
         new_antpos = geometry.compute_new_antpos(i,j,k, AA.antpos, AA.commanded)
-        print(new_antpos)
         collision_pass, array_size_pass, temp_array_size = try_new_antpos(antpos = AA.antpos,
                                                                                 new_antpos = new_antpos,
                                                                                 commanded = AA.commanded,
@@ -319,7 +333,7 @@ def evaluate_candidate_sequential(AA, remaining_combinations):
     return global_success, best_candidate
 
 
-def apply_placement(AA, best_candidate):
+def place_antenna(AA, best_candidate):
     """Adds the best antenna placement to the array and updates fulfillment tracking."""
 
     i, j, k = best_candidate  # Unpack candidate without new_antpos
@@ -334,11 +348,11 @@ def apply_placement(AA, best_candidate):
                                                uv_cell_size = AA.uv_cell_size,
                                                )
     AA.antpos = np.vstack([AA.antpos, new_antpos])
+    AA.n_added += 1
     AA.fulfilled_idx, AA.not_fulfilled_idx = geometry.check_fulfillment(
-        AA.commanded,
-        AA.antpos,
-        AA.fulfill_tolerance,
-        AA.uv_cell_size,
+        commanded = AA.commanded,
+        antpos = AA.antpos,
+        fulfill_tolerance = AA.fulfill_tolerance,
     )
     AA.history["new_fulfilled"].append(new_fulfilled)
     AA.history['n_fulfilled'].append(len(AA.fulfilled_idx))
@@ -365,7 +379,6 @@ def should_terminate(AA, compare_all_commanded, compare_all_antpos):
 
     if compare_all_antpos and not compare_all_commanded:
         if AA.i_commanded < len(AA.not_fulfilled_idx) - 1:
-            print('incrementing i_commanded')
             AA.i_commanded += 1  # Try next commanded point
             return False
         return True  # Exhausted all commanded points
@@ -382,7 +395,7 @@ def should_terminate(AA, compare_all_commanded, compare_all_antpos):
 
 
 
-def print_status(AA, log_path=None):
+def print_status(AA, additional_output = None, log_path=None):
     """
     Print and optionally log the current algorithm status.
 
@@ -404,6 +417,7 @@ def print_status(AA, log_path=None):
         f"📡 Antennas in array: {num_antennas}",
         f"✅ uv points fulfilled: {num_fulfilled}/{len(AA.commanded)}",
         f"🗄️ uv points remaining: {num_remaining}/{len(AA.commanded)}",
+        f" uv points newly fulfilled: {AA.history['n_new_fulfilled'][-1]}",
         "📈 array efficiency: {:.2f}".format(AA.history['efficiency'][-1]),
         "⏳ time for last iteration:", utils.format_time(AA.history['step_time'][-1]),
         "⌛ total time so far:", utils.format_time(np.array(AA.history['step_time']).sum()),
@@ -419,6 +433,8 @@ def print_status(AA, log_path=None):
             f.write(status_str + "\n")
     else:
         clear_output(wait=True)
+        if additional_output is not None:
+            print(additional_output)
         print(status_str)
 
     
@@ -427,7 +443,7 @@ def print_status(AA, log_path=None):
     
     
 def find_local_extrema(chunk, antpos, commanded,  not_fulfilled_tree, not_fulfilled_array,
-                       fulfill_tolerance, diameter, max_array_size, center_at_origin,
+                       fulfill_tolerance, diameter, max_array_size, center_at_origin, minimize_array_size,
                        maximize_antenna_spacing, try_new_antpos, get_min_distance, uv_cell_size):
     """Evaluates candidate antenna placements within a chunk in parallel."""
     max_n_new_fulfilled = 0
@@ -443,7 +459,7 @@ def find_local_extrema(chunk, antpos, commanded,  not_fulfilled_tree, not_fulfil
         new_antpos = geometry.compute_new_antpos(i,j,k, antpos, commanded)
             
         collision_pass, array_size_pass, temp_array_size = try_new_antpos(antpos, new_antpos, commanded, fulfill_tolerance, diameter, max_array_size, center_at_origin)
-
+        
         if collision_pass and array_size_pass:
             success = True  
             new_fulfilled = geometry.get_new_fulfilled(new_antpos = new_antpos,
@@ -461,12 +477,12 @@ def find_local_extrema(chunk, antpos, commanded,  not_fulfilled_tree, not_fulfil
                 max_min_distance = min_distance
                 min_array_size = temp_array_size
             elif len(new_fulfilled) == max_n_new_fulfilled:
-                if maximize_antenna_spacing and min_distance > max_min_distance:
-                    max_min_distance = min_distance
+                if minimize_array_size and temp_array_size < min_array_size:
+                    min_array_size = temp_array_size
                     favored_i, favored_j, favored_k = i, j, k
                     min_array_size = temp_array_size
-                elif temp_array_size < min_array_size:
-                    min_array_size = temp_array_size
+                elif maximize_antenna_spacing and min_distance > max_min_distance:
+                    max_min_distance = min_distance
                     favored_i, favored_j, favored_k = i, j, k
         else:
             newly_rejected_combinations.append((i, j, k))

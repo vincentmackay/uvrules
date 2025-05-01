@@ -1,1 +1,1 @@
-# uv_complete
+# uvcomplete

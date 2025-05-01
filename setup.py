@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='uv_complete',
+    name='uvrules',
     version='0.1',
     packages=find_packages(),
     description='A package to generate uv-complete radio arrays.',
@@ -9,7 +9,7 @@ setup(
     long_description_content_type='text/markdown',
     author='Vincent MacKay',
     author_email='vince.mackay@gmail.com',
-    url='https://github.com/vincentmackay/uv-complete',
+    url='https://github.com/vincentmackay/uvrules',
     install_requires=[
         'numpy',
         'scipy',
