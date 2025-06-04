@@ -157,7 +157,7 @@ def generate_commanded_points(uv_cell_size: float = 1.0,
                 uv_points.append((u, v))
 
     for u in np.arange(-uv_cell_size, -max_bl - uv_cell_size, -uv_cell_size):
-        for v in np.arange(0, max_bl + uv_cell_size, uv_cell_size):
+        for v in np.arange(uv_cell_size, max_bl + uv_cell_size, uv_cell_size):
             distance = np.sqrt(u**2 + v**2)
             if min_bl < distance <= max_bl:
                 uv_points.append((u, v))

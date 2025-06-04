@@ -2,6 +2,7 @@
 
 import numpy as np
 from IPython.display import clear_output
+import matplotlib.pyplot as plt
 import time
 from scipy.spatial import KDTree
 from multiprocessing import Pool, cpu_count
@@ -123,17 +124,23 @@ def add_ant_rules(
             continue
 
         place_antenna(AA, best_candidate)
+        
+        
         step_time = time.time() - last_step_time
         AA.history["step_time"].append(step_time)
 
         if save_file:
             AA.save(path_to_file)
+            
+        if verbose or show_plot:
+            clear_output(wait=True)
 
         if verbose:
             print_status(AA, additional_output=additional_output, log_path=log_path)
 
         if show_plot:
-            AA.plot_fig, AA.plot_ax = plotting.plot_history(AA, AA.plot_fig, AA.plot_ax)
+            AA.plot_fig, AA.plot_ax = plotting.plot_history(AA, None, None)
+            plt.pause(0.01)
 
         last_step_time = time.time()
 
@@ -233,7 +240,7 @@ def generate_candidate_combinations(AA, compare_all_commanded, compare_all_antpo
 
 
 
-def chunkify(AA, lst, n):
+def chunkify(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
@@ -254,7 +261,7 @@ def try_new_antpos(antpos, new_antpos, commanded, fulfill_tolerance, diameter, m
 
 
 def evaluate_candidates_parallel(AA, remaining_combinations):
-    chunks = list(chunkify(AA, remaining_combinations,
+    chunks = list(chunkify(remaining_combinations,
                            max(len(remaining_combinations) // AA.num_cores, AA.num_cores)))
     args_for_starmap = [
         (chunk, AA.antpos, AA.commanded, AA.not_fulfilled_tree, AA.not_fulfilled_array,
@@ -263,7 +270,7 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
          geometry.get_min_distance_from_new_antpos, AA.uv_cell_size)
         for chunk in chunks
     ]
-
+    
     with Pool(processes=AA.num_cores) as pool:
         results = pool.starmap(find_local_extrema, args_for_starmap)
 
@@ -319,6 +326,7 @@ def evaluate_candidate_sequential(AA, remaining_combinations):
 
 def place_antenna(AA, best_candidate):
     i, j, k = best_candidate
+    
     new_antpos = geometry.compute_new_antpos(i, j, k, AA.antpos, AA.commanded)
     new_fulfilled = geometry.get_new_fulfilled(
         new_antpos=new_antpos,
@@ -328,6 +336,7 @@ def place_antenna(AA, best_candidate):
         fulfill_tolerance=AA.fulfill_tolerance,
         uv_cell_size=AA.uv_cell_size
     )
+
     AA.antpos = np.vstack([AA.antpos, new_antpos])
     AA.n_added += 1
     AA.fulfilled_idx, AA.not_fulfilled_idx = geometry.check_fulfillment(
@@ -342,6 +351,8 @@ def place_antenna(AA, best_candidate):
     AA.not_fulfilled_array = AA.commanded[AA.not_fulfilled_idx]
     AA.not_fulfilled_tree = KDTree(AA.not_fulfilled_array)
     AA.antpos_norms = np.linalg.norm(AA.antpos, axis=1)
+    
+
 
 
 def should_terminate(AA, compare_all_commanded, compare_all_antpos):
@@ -371,9 +382,10 @@ def print_status(AA, additional_output=None, log_path=None):
     status = [
         f"[{now}]",
         f"📡 Antennas in array: {len(AA.antpos)}",
-        f"✅ uv points fulfilled: {len(AA.fulfilled_idx)}/{len(AA.commanded)}",
-        f"🗄️ uv points remaining: {len(AA.not_fulfilled_idx)}/{len(AA.commanded)}",
-        f"🆕 newly fulfilled: {AA.history['n_new_fulfilled'][-1]}",
+        "Last antenna placed: ({:.2f} m , {:.2f} m)".format(AA.antpos[-1][0],AA.antpos[-1][1]),
+        f"✅ # uv points fulfilled: {len(AA.fulfilled_idx)}/{len(AA.commanded)}",
+        f"🗄️ # uv points remaining: {len(AA.not_fulfilled_idx)}/{len(AA.commanded)}",
+        f"🆕 # uv points fulfilled at last step: {AA.history['n_new_fulfilled'][-1]}",
         f"📈 efficiency: {AA.history['efficiency'][-1]:.2f}",
         f"⏳ last step: {utils.format_time(AA.history['step_time'][-1])}",
         f"⌛ total time: {utils.format_time(np.sum(AA.history['step_time']))}",
@@ -384,7 +396,6 @@ def print_status(AA, additional_output=None, log_path=None):
         with open(log_path, "a") as f:
             f.write(status_str + "\n")
     else:
-        clear_output(wait=True)
         if additional_output:
             print(additional_output)
         print(status_str)
