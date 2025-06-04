@@ -131,7 +131,7 @@ def plot_history(AA, fig=None, ax=None):
     # Top-right: newly fulfilled and remaining
     ax[0, 1].cla()
     ax[0, 1].plot(np.arange(1, len(hist["n_new_fulfilled"]) + 1), hist["n_new_fulfilled"], color='b')
-    ax[0, 1].set_ylabel('Newly fulfilled', color='b')
+    ax[0, 1].set_ylabel(r'Number of $uv$ points fulfilled at last step', color='b')
     ax[0, 1].set_xlabel('Antenna index')
     ax[0, 1].grid(True)
     ax2 = ax[0, 1].twinx()
