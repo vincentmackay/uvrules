@@ -1,26 +1,25 @@
 # uvrules
 
-`uvrules` implements the RULES algorithm — **Regular UV Layout Engineering Strategy** — for generating radio interferometer arrays with complete and efficient uv-plane coverage.
+`uvrules` implements the **Radio-array _uv_ Layout Engineering Strategy (RULES)** algorithm for generating radio interferometer arrays with complete and efficient uv-plane coverage.
 
-This is a tool for designing antenna layouts that fulfill a specified set of baseline vectors (e.g., a hexagonal uv grid), with applications to 21 cm cosmology and radio interferometry more broadly.
+This is a tool for designing antenna layouts that fulfill a regular square lattice of _uv_ points, with applications to 21 cm cosmology and radio interferometry more broadly.
 
 ---
 
-## 🚧 Early version notice
+## Early version notice
 
 This is an early release of the package. The interface may change, and documentation is still minimal.
 
-If you're interested in using this package, please reach out — contributions and suggestions are welcome.
+If you're interested in using this package, please reach out. Contributions and suggestions are welcome!
 
 ---
 
 ## Features
 
-- Generate uv-complete layouts from commanded uv points  
-- Enforce physical layout constraints (dish diameter, max array size, etc.)  
-- Optimize placements for coverage, compactness, or spacing  
-- Parallel and sequential modes available  
-- Visualization of array layout, uv coverage, and synthesized beam  
+- Generate uv-complete layouts from commanded _uv_ points  
+- Enforce physical layout constraints (dish diameter, max array size, number of antennas, etc.) 
+- Parallelized 
+- Visualization of array layout, _uv_ coverage, and synthesized beam  
 
 ---
 
@@ -29,7 +28,7 @@ If you're interested in using this package, please reach out — contributions a
 Clone the repo and install locally:
 
 ```bash
-git clone https://github.com/yourusername/uvrules.git
+git clone https://github.com/vincentmackay/uvrules.git
 cd uvrules
 pip install .
 ```
@@ -39,7 +38,7 @@ pip install .
 
 ## Documentation
 
-Full documentation and tutorials will be added soon.
+See Jupyter notebook tutorial. Full documentation will be added soon.
 
 In the meantime, see:
 
