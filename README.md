@@ -1,6 +1,6 @@
 # uvrules
 
-`uvrules` implements the **Radio-array _uv_ Layout Engineering Strategy (RULES)** algorithm for generating radio interferometer arrays with complete and efficient uv-plane coverage.
+`uvrules` implements the **Radio-array _uv_ Layout Engineering Strategy (RULES)** algorithm for generating radio interferometer arrays with complete uv-plane coverage.
 
 This is a tool for designing antenna layouts that fulfill a regular square lattice of _uv_ points, with applications to 21 cm cosmology and radio interferometry more broadly.
 
