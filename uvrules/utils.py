@@ -50,27 +50,51 @@ def get_uvs_from_baseline_select(array_config: dict, baseline_select: list,
     return np.asarray(uvs)
 
 
-def select_baselines(commanded: np.ndarray, antpos: np.ndarray,
-                     fulfill_tolerance: float) -> list:
+def select_baselines(AA = None,
+                     commanded = None,
+                     antpos = None,
+                     fulfill_tolerance = None,
+                     flip_tolerance = 0.0,
+                     avoid_redundancies = True) -> list:
     """
     Select baseline pairs that fulfill commanded uv points.
 
     Parameters
     ----------
-    commanded : np.ndarray
+    AA : AntArray, optional
+        AntArray object containing commanded uv points and antenna positions.
+    commanded : np.ndarray, optional
         Commanded uv points.
-    antpos : np.ndarray
+    antpos : np.ndarray, optional
         Antenna positions.
-    fulfill_tolerance : float
+    flip_tolerance : float, optional
+        Tolerance for flipping uv points.
+    fulfill_tolerance : float, default = 0.0
         Distance tolerance to match uv points.
+    avoid_redundancies : bool, default=True
+        If True, avoid selecting redundant baselines.
 
     Returns
     -------
     list of tuple
         List of antenna index pairs.
     """
-    not_fulfilled = np.copy(commanded)
+
+    if AA is not None:
+        commanded = AA.commanded
+        antpos = AA.antpos
+        fulfill_tolerance = AA.fulfill_tolerance
+    elif commanded is None or antpos is None or fulfill_tolerance is None:
+        raise ValueError("Either AA or commanded, antpos, and fulfill_tolerance must be provided.")
+
+
+    fi, nfi = AA.check_fulfillment()
+    commanded_fulfilled = commanded[fi]
+    not_fulfilled = np.copy(commanded_fulfilled)
     antpairs = []
+
+    if not avoid_redundancies:
+        n_total_baselines = len(antpos) * (len(antpos) - 1) // 2
 
     for i, pos1 in enumerate(antpos):
         for j, pos2 in enumerate(antpos):
@@ -78,28 +102,34 @@ def select_baselines(commanded: np.ndarray, antpos: np.ndarray,
                 continue
             u = pos2[0] - pos1[0]
             v = pos2[1] - pos1[1]
-            if v == 0:
-                u = np.abs(u)
-            elif v < 0:
+            if (v < -flip_tolerance) | ((np.abs(v) <= flip_tolerance) & (u < 0)):
                 u *= -1
                 v *= -1
             uv = np.array([u, v])
 
-            idx_new_fulfilled = np.where(np.linalg.norm(not_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
 
-            if len(idx_new_fulfilled[0]) < 1:
+            if avoid_redundancies: # Check whether the new uv point is one of the unfulfilled one
+                idx_new_uv = np.where(np.linalg.norm(not_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
+            else: # Just check whether the new uv point is commanded
+                idx_new_uv = np.where(np.linalg.norm(commanded_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
+
+            if len(idx_new_uv[0]) < 1:
                 continue
             else:
-                not_fulfilled = np.delete(not_fulfilled, idx_new_fulfilled, axis=0)
+                if avoid_redundancies:
+                    not_fulfilled = np.delete(not_fulfilled, idx_new_uv, axis=0)
                 antpairs.append((i, j))
 
-            if len(not_fulfilled) % 1000 == 0 and len(not_fulfilled) > 0:
-                print(f'{len(not_fulfilled)}/{len(commanded)} remaining, {len(antpairs)} baselines selected.')
-
-            if len(not_fulfilled) < 1:
+            if len(antpairs) % 1000 == 0:
+                if avoid_redundancies:
+                    print(f'{len(not_fulfilled)}/{len(commanded_fulfilled)} remaining, {len(antpairs)} baselines selected.')
+                else:
+                    print(f'{len(antpairs)}/{n_total_baselines} done.')
+            if len(not_fulfilled) < 1 and avoid_redundancies:
                 print('Baseline selection complete.')
                 return antpairs
 
+    print('All baselines done.')
     return antpairs
 
 
@@ -122,13 +152,13 @@ def get_array_config(antpos: np.ndarray) -> dict:
     return {i: [antpos[i, 0], antpos[i, 1]] for i in range(len(antpos))}
 
 
-def generate_commanded_points(uv_cell_size: float = 1.0,
+def generate_commanded_square(uv_cell_size: float = 1.0,
                                min_bl: float = 10,
                                max_bl: float = 100,
                                show_plot: bool = True,
                                ax: plt.Axes = None) -> np.ndarray:
     """
-    Generate a set of commanded uv points forming a half-annulus.
+    Generate a set of commanded uv points forming a half-annulus on a square grid.
 
     Parameters
     ----------
@@ -176,6 +206,166 @@ def generate_commanded_points(uv_cell_size: float = 1.0,
 
     uv_points = uv_points[np.argsort(np.linalg.norm(uv_points, axis=1))]
     return uv_points
+
+
+def generate_commanded_hexa(min_bl_lambda=10, max_bl_lambda=100, packing_density=2.):
+    """
+    Generate a set of commanded uv points forming a half-annulus on a hexagonal grid.
+
+    Parameters
+    ----------
+        min_bl_lambda : float, default=10
+            Minimum baseline length in wavelengths.
+        max_bl_lambda : float, default=100
+            Maximum baseline length in wavelengths.
+        packing_density : float, default=2.
+            Packing density of the hexagonal grid.
+
+
+    Returns
+    -------
+    np.ndarray
+        Generated uv points, sorted by radius.
+    """
+    spacing = 1 / packing_density
+    row_height = spacing * np.sqrt(3) / 2
+    
+    estimated_size = int(np.pi * (max_bl_lambda**2 - min_bl_lambda**2) * packing_density**2 * 1.2)
+    uv_points = np.zeros((estimated_size, 2))
+    count = 0
+    
+    row = 0
+    while True:
+        y = row * row_height
+        if y > max_bl_lambda:
+            break
+            
+        # Calculate row offset for triangular pattern
+        x_offset = (spacing / 2) * (row % 2)
+        
+        if row == 0:
+            # First row: start at x=0, only go positive
+            x = 0
+        else:
+            # Other rows: start from left edge
+            x = -max_bl_lambda + x_offset
+        
+        
+        while x <= max_bl_lambda:
+            uv = np.array([x, y])
+            norm = np.linalg.norm(uv)
+            
+            if norm >= min_bl_lambda and norm <= max_bl_lambda:
+                uv_points[count] = uv
+                count += 1
+            
+            x += spacing
+        
+        row += 1
+    
+    uv_points = uv_points[:count]
+    uv_points = uv_points[np.argsort(np.linalg.norm(uv_points, axis=1))]
+    return uv_points
+
+def generate_commanded_radexp(min_bl_lambda=10, max_bl_lambda=100, 
+                                     exp_base=1.1, radial_density=1.0, angular_density=1.0):
+    angular_spacing = np.pi / (angular_density * 20)
+    # Include angle = 0 (positive u-axis) but exclude angle = π (negative u-axis)
+    angles = np.arange(0, np.pi, angular_spacing)
+    
+    uv_points = []
+    
+    for angle in angles:
+        radial_step = 1.0 / radial_density
+        r = min_bl_lambda
+        radial_index = 0
+        
+        while r <= max_bl_lambda:
+            if r >= min_bl_lambda:
+                u = r * np.cos(angle)
+                v = r * np.sin(angle)
+                
+                # This condition is now redundant since we exclude angle=π
+                uv_points.append([u, v])
+            
+            radial_index += radial_step
+            r = min_bl_lambda * (exp_base ** radial_index)
+    
+    return np.array(uv_points) if uv_points else np.array([]).reshape(0, 2)
+
+def generate_commanded_radexp_gridded(min_bl_lambda=10, max_bl_lambda=100, 
+                                       exp_base=1.1, radial_density=1.0, 
+                                       angular_density=1.0, cell_size=1.0):
+    angular_spacing = np.pi / (angular_density * 20)
+    angles = np.arange(0, np.pi, angular_spacing)
+    
+    commanded = []
+    
+    for angle in angles:
+        radial_step = 1.0 / radial_density
+        r = min_bl_lambda
+        radial_index = 0
+        
+        # For each spoke, keep track of used grid positions to avoid duplicates
+        used_positions = set()
+        
+        while r <= max_bl_lambda:
+            if r >= min_bl_lambda:
+                # Calculate ideal position
+                u_ideal = r * np.cos(angle)
+                v_ideal = r * np.sin(angle)
+                
+                # Snap to grid
+                i = round(u_ideal / cell_size)
+                j = round(v_ideal / cell_size)
+                u_grid = i * cell_size
+                v_grid = j * cell_size
+                
+                # Check if this grid position is already used on this spoke
+                grid_pos = (i, j)
+                if grid_pos not in used_positions:
+                    # Verify the gridded point is still in valid range
+                    r_grid = np.sqrt(u_grid**2 + v_grid**2)
+                    if min_bl_lambda <= r_grid <= max_bl_lambda:
+                        commanded.append([u_grid, v_grid])
+                        used_positions.add(grid_pos)
+            
+            radial_index += radial_step
+            r = min_bl_lambda * (exp_base ** radial_index)
+    
+    return np.array(commanded) if commanded else np.array([]).reshape(0, 2)
+
+
+
+def generate_commanded_gridded_spokes(packing_density=2.0, min_bl_lambda=10, max_bl_lambda=100,
+                                     min_points_per_spoke=10):
+    """
+    Generate points on a square grid, keeping only those that form radial spokes.
+    
+    Parameters:
+    - packing_density: grid density (grid_size = 1/packing_density)
+    - min_bl_lambda, max_bl_lambda: annulus bounds
+    - min_points_per_spoke: minimum points required to keep a spoke
+    """
+    uv_points = generate_commanded_square(min_bl=min_bl_lambda,max_bl=max_bl_lambda,
+                                          uv_cell_size=1.0/packing_density, show_plot=False)
+    
+    ratios = uv_points[:,0] / uv_points[:,1]
+
+    # Create groups of points that share the same ratio
+    unique_ratios, inverse_indices = np.unique(ratios, return_inverse=True)
+    counts = np.bincount(inverse_indices)
+
+    # Keep only points from groups with more than min_points_per_spoke
+    valid_indices = np.where(counts[inverse_indices] >= min_points_per_spoke)[0]
+    commanded = uv_points[valid_indices]
+    
+    # Sort by radius
+    if len(commanded) > 0:
+        commanded = commanded[np.argsort(np.linalg.norm(commanded, axis=1))]
+    
+    return commanded
+
 
 
 def get_efficiency(n_fulfilled: int, antpos: np.ndarray) -> float:
@@ -386,3 +576,67 @@ def get_baseline_counts(AA, verbose: bool = True) -> list:
         )
         baseline_counts.append(len(not_fulfilled_idx))
     return baseline_counts
+
+
+
+def array_config_to_array_layout(array_config,filename = None):
+    """
+    Write array_layout file from array_config object.
+
+    Parameters
+    ----------
+    array_config : dict
+        A dictionary mapping antenna indices to their positions.
+    filename : str, optional
+        The name of the output CSV file. If None, a default name based on the current date and time will be used.
+        
+    Returns
+    -------
+     None
+    """
+
+    
+    # Define the header
+    header = "Name\tNumber\tBeamID\tE\tN\tU\n"
+
+    # If filename is provided, use it; otherwise, generate a default name
+    if filename is not None:
+        output_filename = filename + '.csv'
+    else: # Name the array based on date
+        from datetime import datetime
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"array_layout_{date_str}.csv"
+    
+    # Open the file to write
+    with open(output_filename, "w") as file:
+        file.write(header)  # Write the header
+
+
+        for key, value in array_config.items():
+            # Ensure the value has at least two components (E, N) and handle optional U
+            E = value[0]
+            N = value[1]
+            U = value[2] if len(value) > 2 else 0.0
+
+            # Write the formatted line
+            file.write(f"ANT{key+1}\t{key}\t0\t{E:.8f}\t{N:.8f}\t{U:.8f}\n")
+
+
+
+def baseline_select_to_string(baseline_select):
+    """ Convert a list of baseline pairs to a string representation.
+
+    Parameters
+    ----------
+    baseline_select : list of tuples representing baseline pairs
+
+    Returns
+    -------
+    bs_str : str
+        String representation of the baseline pairs in the format [(i,j),(i,j),...].
+    """
+    bs_str = '['
+    for row in baseline_select:
+        bs_str += f'({row[0]},{row[1]}),'
+    bs_str = bs_str[:-1] + ']'
+    return bs_str

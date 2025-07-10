@@ -154,7 +154,7 @@ def plot_history(AA, fig=None, ax=None):
     return fig, ax
 
 
-def compute_beam_nufft(uvs: np.ndarray, n_px_side=100, fov_range=90, vmin=-8, dimensions=1):
+def compute_beam_nufft_old(uvs: np.ndarray, n_px_side=100, fov_range=90, vmin=-8, dimensions=1):
     """
     Compute synthesized beam from uv points using NUFFT.
 
@@ -194,7 +194,67 @@ def compute_beam_nufft(uvs: np.ndarray, n_px_side=100, fov_range=90, vmin=-8, di
     sin_theta = (np.arange(n_px_side) - n_px_side // 2) * delta_sin_theta / resolution_factor
     return psf, sin_theta
 
+def compute_beam_nufft(uvs: np.ndarray, n_px_side=100, fov_range=90, angle_units = 'deg', vmin=-8):
+    """
+    Compute synthesized beam from uv points using NUFFT.
 
+    Parameters
+    ----------
+    uvs : ndarray
+        UV coordinates (wavelengths), shape (n, 2).
+    n_px_side : int
+        Image resolution (pixels per side).
+    fov_range : float
+        Half-field of view in degrees.
+    vmin : float
+        Dynamic range floor.
+
+    Returns
+    -------
+    psf : 2D array
+        Power beam (normalized).
+    sin_theta : 1D array
+        Angular grid in sin(theta).
+    """
+
+    if angle_units=='deg':
+      max_sin_theta = np.sin(fov_range * np.pi/180)
+    elif angle_units=='arcmin':
+      max_sin_theta = np.sin(fov_range / 60 * np.pi/180)
+
+
+    uvs = np.vstack([uvs, -uvs])
+
+    max_sin_theta = np.sin(fov_range * np.pi/180)
+    B = n_px_side / 4 / (max_sin_theta + 0.05) # L * res_factor            # effective domain size for resolution control
+    
+
+
+    u_scaled = np.pi * uvs[:, 0] / B
+    v_scaled = np.pi * uvs[:, 1] / B
+    c = np.ones(len(u_scaled), dtype=np.complex128)
+    n_modes = int(n_px_side + 1)
+    kx = np.arange(-n_modes//2, n_modes//2)
+    x = np.ascontiguousarray(u_scaled)
+    y = np.ascontiguousarray(v_scaled)
+    eps = 1e-12
+
+    image = nufft2d1(x=x,
+        y=y,
+        c=c,
+        n_modes=(n_modes, n_modes),
+        eps=eps,
+        isign=1)
+    
+
+    psf = np.abs(image.reshape((n_modes,n_modes))) ** 2
+    psf /= psf.max()
+
+    sin_theta = kx / (2 * B)
+    sin_theta = np.clip(sin_theta, -1, 1)
+
+
+    return psf, sin_theta
 
 def plot_psf_1d(
     AA=None,
@@ -331,7 +391,7 @@ def plot_psf_1d(
         return fig, ax
 
 
-def plot_psf_2d(
+def plot_psf_2d_old(
     AA=None,
     uvs=None,
     n_px_side=1000,
@@ -445,3 +505,117 @@ def plot_psf_2d(
     return fig, ax
 
 
+
+
+def plot_psf_2d(
+    AA=None,
+    uvs=None,
+    n_px_side=1000,
+    angle_range_deg=90,
+    angle_range_arcmin=None,
+    vmin=-8,
+    vmax=0,
+    dpi=150,
+    cmap="inferno",
+    scaling='power',
+    show_cbar=True,
+    ax=None,
+):
+    """
+    Plot 2D synthesized beam in polar or cartesian coordinates.
+
+    Parameters
+    ----------
+    AA : AntArray, optional
+        AntArray instance.
+    uvs : ndarray, optional
+        UV coordinates.
+    n_px_side : int
+        Resolution.
+    angle_range_deg : float
+        FOV in degrees.
+    angle_range_arcmin : float, optional
+        FOV in arcminutes (overrides degrees).
+    vmin, vmax : float
+        Dynamic range (log10).
+    dpi : int
+        Figure resolution.
+    cmap : str
+        Colormap.
+    scaling : {'power', 'linear'}
+        Intensity scaling.
+    show_cbar : bool
+        Show colorbar.
+    ax : Axes, optional
+        Axis to reuse.
+
+    Returns
+    -------
+    fig, ax : Figure and axis
+    """
+    if AA is None and uvs is None:
+        raise ValueError("Either AA or uvs must be provided.")
+    if uvs is None:
+        uvs = antpos_to_uv(AA.antpos) / AA.ref_wl
+
+    if angle_range_arcmin is None:
+        fov = angle_range_deg
+        angle_units = 'deg'
+    else:
+        fov = angle_range_arcmin / 60
+        angle_units = 'arcmin'
+        
+    psf, sin_theta = compute_beam_nufft(uvs, n_px_side=n_px_side, fov_range=fov, angle_units = angle_units, vmin=vmin)
+
+
+    theta = np.degrees(np.arcsin(sin_theta))
+
+
+    if angle_units == 'arcmin':
+        theta *= 60
+        label = "arcmin"
+    else:
+        label = "deg"
+
+    THETA_X, THETA_Y = np.meshgrid(theta, theta)
+    R = np.sqrt(THETA_X**2 + THETA_Y**2)
+    ANGLE = np.arctan2(THETA_Y, THETA_X)
+
+    use_polar = (angle_units == 'arcmin' and angle_range_arcmin > 600) or (angle_units == 'deg' and angle_range_deg > 10)
+
+
+
+    if ax is None:
+        fig = plt.figure(figsize=(6, 5), dpi=dpi)
+        ax = fig.add_subplot(111, projection="polar" if use_polar else None)
+    else:
+        fig = ax.get_figure()
+        if (ax.name == "polar") != use_polar:
+            ss = ax.get_subplotspec()
+            ax.remove()
+            ax = fig.add_subplot(ss, projection="polar" if use_polar else None)
+
+
+
+
+    if use_polar:
+        im = ax.pcolormesh(ANGLE, R, psf[::1,::-1],
+                           cmap="inferno", norm=colors.LogNorm(vmax=1,vmin=10**vmin), shading="auto", rasterized=True)
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        
+        ax.set_xticks([])
+            #ax.set_rlabel_position(225)
+        ax.grid(color='k',alpha=0.2)
+        ax.set_rlim(0, fov)
+    else:
+        im = ax.pcolormesh(theta, theta, psf.T[::1,::-1], cmap="inferno", norm=colors.LogNorm(vmax=1,vmin=10**vmin), shading="auto",rasterized=True)
+    ax.set_aspect("equal")
+    #ax.set_xlabel(rf"$\theta_x$ [{angle_units}]")
+    #ax.set_ylabel(rf"$\theta_y$ [{angle_units}]")
+    ax.grid(color='k',alpha=0.2)
+
+    if show_cbar:
+        fig.colorbar(im, ax=ax, label="Normalized Beam (log scale)")
+    plt.tight_layout()
+    return fig, ax

@@ -109,10 +109,10 @@ class AntArray:
         self.packing_density = packing_density
         self.p_norm = p_norm
         self.uv_cell_size = self.ref_wl / self.packing_density
-        self.fulfill_tolerance = fulfill_tolerance if fulfill_tolerance is not None else self.uv_cell_size / 2
+        self.fulfill_tolerance = fulfill_tolerance if fulfill_tolerance is not None else 1e-5# self.uv_cell_size / 2
         self.max_array_size = max_array_size
 
-        self.commanded = utils.generate_commanded_points(uv_cell_size=self.uv_cell_size, min_bl=self.min_bl, max_bl=self.max_bl, show_plot=False)
+        self.commanded = utils.generate_commanded_square(uv_cell_size=self.uv_cell_size, min_bl=self.min_bl, max_bl=self.max_bl, show_plot=False)
         self.array_config = utils.get_array_config(self.antpos)
 
         # Initialized as None
@@ -178,7 +178,7 @@ class AntArray:
         self.redundancy = utils.get_redundancy(antpos=self.antpos, ref_wl=self.ref_wl, red_tol_lambda=red_tol_lambda)
         return self.redundancy
 
-    def generate_commanded_points(self, uv_cell_size=None, min_bl=None, max_bl=None, show_plot=True) -> np.ndarray:
+    def generate_commanded_square(self, uv_cell_size=None, min_bl=None, max_bl=None, show_plot=True, shape = 'square') -> np.ndarray:
         """Generate and store a new set of commanded uv points."""
         if uv_cell_size is None:
             uv_cell_size = self.uv_cell_size
@@ -186,7 +186,7 @@ class AntArray:
             min_bl = self.min_bl
         if max_bl is None:
             max_bl = self.max_bl
-        self.commanded = utils.generate_commanded_points(uv_cell_size, min_bl, max_bl, show_plot=show_plot)
+        self.commanded = utils.generate_commanded_square(uv_cell_size, min_bl, max_bl, show_plot=show_plot)
         return self.commanded
 
     def check_fulfillment(self, flip_tolerance=0.0, verbose=False) -> tuple:
@@ -263,7 +263,7 @@ class AntArray:
         if commanded and (missing['commanded'] or force_recompute):
             if verbose:
                 print("Generating commanded points...")
-            self.generate_commanded_points()
+            self.generate_commanded_square()
 
         if array_size and (missing['array_size'] or force_recompute):
             if verbose:
