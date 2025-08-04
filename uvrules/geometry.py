@@ -128,6 +128,21 @@ def collision_check(antpos,diameter):
         return get_min_distance(antpos)<=diameter
 
 
+def collision_check_single_antenna(antpos: np.ndarray, antenna_idx: int, diameter: float) -> bool:
+    """Check if a single antenna collides with any other antenna."""
+    if diameter is None:
+        return False
+    
+    # Calculate distances from this antenna to all others
+    this_antenna = antpos[antenna_idx]
+    other_antennas = np.delete(antpos, antenna_idx, axis=0)
+    
+    if len(other_antennas) == 0:
+        return False
+    
+    distances = np.linalg.norm(other_antennas - this_antenna, axis=1)
+    return np.min(distances) <= diameter
+
 def get_redundancy(AA = None, antpos = None, ref_wl = None, red_tol_lambda = None, round = False):
     if AA is not None:
         antpos = AA.antpos
@@ -166,8 +181,8 @@ def compute_new_antpos(i, j, k, antpos, commanded):
 
 
 
-def check_fulfillment_old(AA = None, commanded = None, antpos = None, fulfill_tolerance = None,
-                      p_norm=np.inf, flip_tolerance=0.0, verbose = False):
+def check_fulfillment_very_old(AA = None, commanded = None, antpos = None, fulfill_tolerance = None,
+                      p_norm=float('inf'), flip_tolerance=0.0, verbose = False):
     """Returns the indices of fulfilled and unfulfilled points."""
     
     if AA is not None:
@@ -192,8 +207,8 @@ def check_fulfillment_old(AA = None, commanded = None, antpos = None, fulfill_to
     return fulfilled_indices, not_fulfilled_indices
 
 
-def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=None,
-                      p_norm=np.inf, flip_tolerance=0.0, verbose=False, n_samples=1):
+def check_fulfillment_old(AA=None, commanded=None, antpos=None, fulfill_tolerance=None,
+                      p_norm=float('inf'), flip_tolerance=0.0, verbose=False, n_samples=1):
     """Returns the indices of fulfilled and unfulfilled points.
     
     A commanded point is considered fulfilled if at least `n_samples` realized
@@ -228,8 +243,63 @@ def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=No
     return fulfilled_indices, not_fulfilled_indices
 
 
-def get_new_fulfilled(new_antpos=None, antpos=None, not_fulfilled_tree=None, not_fulfilled_array=None,
-                      fulfill_tolerance=0., uv_cell_size=1., n_samples = 1, flip_tolerance = 1e-5, p_norm=np.inf):
+def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=None,
+                     p_norm=float('inf'), flip_tolerance=0.0, verbose=False, n_samples=1):
+    """
+    Returns the indices of fulfilled and unfulfilled points.
+    A commanded point is considered fulfilled if at least `n_samples` realized
+    uv points fall within `fulfill_tolerance` of it.
+    
+    Returns:
+    --------
+    fulfilled_indices : ndarray
+    not_fulfilled_indices : ndarray  
+    n_remaining_fulfillments : ndarray or None
+        If n_samples > 1, returns array of remaining fulfillments needed per commanded point.
+        If n_samples == 1, returns None.
+    """
+    if AA is not None:
+        commanded = AA.commanded
+        antpos = AA.antpos
+        fulfill_tolerance = AA.fulfill_tolerance
+        
+    if len(antpos.shape) < 2 or len(antpos) < 2:
+        empty_fulfilled = np.array([], dtype=int)
+        all_not_fulfilled = np.arange(len(commanded), dtype=int)
+        if n_samples > 1:
+            n_remaining = n_samples * np.ones(len(commanded), dtype=int)
+            return empty_fulfilled, all_not_fulfilled, n_remaining
+        else:
+            return empty_fulfilled, all_not_fulfilled, None
+    
+    # Get realized uv points from antenna positions
+    antpos_uvs = antpos_to_uv(antpos, flip_tolerance=flip_tolerance)
+    tree = KDTree(antpos_uvs)
+    
+    # Find all nearby realized uvs within tolerance for each commanded point
+    idx_fulfilled = tree.query_ball_point(commanded, r=fulfill_tolerance, p=p_norm)
+    
+    # Count how many realized points are within the ball for each commanded point
+    hit_counts = np.asarray([len(idx) for idx in idx_fulfilled])
+    
+    # Determine fulfilled vs not fulfilled based on n_samples threshold
+    fulfilled_mask = hit_counts >= n_samples
+    fulfilled_indices = np.where(fulfilled_mask)[0]
+    not_fulfilled_indices = np.where(~fulfilled_mask)[0]
+    
+    if verbose:
+        print(f'{len(fulfilled_indices)}/{len(commanded)} fulfilled (≥{n_samples} samples), '
+              f'{len(not_fulfilled_indices)}/{len(commanded)} remaining.')
+    
+    # Calculate remaining fulfillments if n_samples > 1
+    if n_samples > 1:
+        n_remaining_fulfillments = np.maximum(0, n_samples - hit_counts)
+        return fulfilled_indices, not_fulfilled_indices, n_remaining_fulfillments
+    else:
+        return fulfilled_indices, not_fulfilled_indices, len(not_fulfilled_indices)
+
+def get_new_fulfilled_old(new_antpos=None, antpos=None, not_fulfilled_tree=None, not_fulfilled_array=None,
+                      fulfill_tolerance=0., uv_cell_size=1., n_samples = 1, flip_tolerance = 1e-5, p_norm=float('inf')):
     """
     Returns the set of newly fulfilled uv points for a candidate antenna placement.
 
@@ -264,3 +334,65 @@ def get_new_fulfilled(new_antpos=None, antpos=None, not_fulfilled_tree=None, not
 
     matched_indices = np.unique(np.concatenate(matches)).astype(int)
     return not_fulfilled_array[matched_indices]
+
+
+def get_new_fulfilled(new_antpos=None, antpos=None, not_fulfilled_tree=None, not_fulfilled_array=None,
+                     fulfill_tolerance=0., uv_cell_size=1., n_samples=1, flip_tolerance=1e-5,
+                     not_fulfilled_idx=None, n_remaining_fulfillments=None, p_norm=float('inf')):
+    """
+    Returns the set of newly fulfilled uv points for a candidate antenna placement.
+    Now supports n_samples > 1 by counting incremental progress toward fulfillment.
+    
+    Parameters:
+    -----------
+    - new_antpos : ndarray of shape (2,), position of candidate antenna
+    - antpos : ndarray of shape (N, 2), existing antenna positions
+    - not_fulfilled_tree : KDTree over not_fulfilled_array
+    - not_fulfilled_array : ndarray of shape (M, 2), uv points still needing fulfillment
+    - not_fulfilled_idx : ndarray, indices into commanded array for each point in not_fulfilled_array
+    - n_remaining_fulfillments : ndarray of shape (len(commanded),), remaining samples needed per commanded point
+    
+    Returns:
+    --------
+    - newly_fulfilled_points : ndarray of matched uv coordinates that are newly fulfilled
+    - fulfillment_score : int, total "fulfillment credit" accounting for n_samples
+    """
+    if new_antpos is None or antpos is None or not_fulfilled_tree is None or not_fulfilled_array is None:
+        raise ValueError("new_antpos, antpos, not_fulfilled_tree and not_fulfilled_array must be provided.")
+    
+    # Compute new uv vectors
+    new_uvs = antpos - new_antpos
+    new_uvs *= np.where(new_uvs[:, 1] >= -flip_tolerance, 1, -1).reshape(-1, 1)
+    new_uvs[(np.abs(new_uvs[:, 1]) <= flip_tolerance), 0] = np.abs(new_uvs[(np.abs(new_uvs[:, 1]) <= flip_tolerance), 0])
+    
+    # KDTree lookup
+    matches = not_fulfilled_tree.query_ball_point(new_uvs, r=fulfill_tolerance, p=p_norm)
+    if len(matches) == 0:
+        return np.empty((0, 2), dtype=float), 0
+    
+    matched_indices = np.unique(np.concatenate(matches)).astype(int)
+    newly_fulfilled_points = not_fulfilled_array[matched_indices]
+    
+    # If n_samples = 1 or no remaining fulfillments tracking, return old behavior
+    if n_samples == 1 or n_remaining_fulfillments is None or not_fulfilled_idx is None:
+        return newly_fulfilled_points, len(newly_fulfilled_points)
+    
+    # For n_samples > 1, calculate fulfillment score
+    fulfillment_score = 0
+    
+    # Count hits per commanded point
+    commanded_hits = {}  # commanded_idx -> number of new UV realizations hitting it
+    
+    for match_list_idx, match_list in enumerate(matches):
+        for not_fulfilled_local_idx in match_list:
+            # Map from not_fulfilled_array index to commanded array index
+            commanded_idx = not_fulfilled_idx[not_fulfilled_local_idx]
+            commanded_hits[commanded_idx] = commanded_hits.get(commanded_idx, 0) + 1
+    
+    # Calculate score based on remaining fulfillments needed
+    for commanded_idx, hits in commanded_hits.items():
+        remaining = n_remaining_fulfillments[commanded_idx]
+        contribution = min(hits, remaining)
+        fulfillment_score += contribution
+    
+    return newly_fulfilled_points, fulfillment_score

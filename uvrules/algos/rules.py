@@ -199,9 +199,16 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
     else:
         AA.commanded = AA.commanded[np.argsort(commanded_order * np.linalg.norm(AA.commanded, axis=1))]
 
-    AA.fulfilled_idx, AA.not_fulfilled_idx = geometry.check_fulfillment(
-        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, n_samples = AA.n_samples
+
+    AA.n_samples = n_samples
+    
+    # Get fulfillment status and remaining fulfillments in one call
+    AA.fulfilled_idx, AA.not_fulfilled_idx, AA.n_remaining_fulfillments = geometry.check_fulfillment(
+        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, n_samples=AA.n_samples
     )
+
+
+
     AA.array_is_complete = len(AA.not_fulfilled_idx) == 0
     AA.not_fulfilled_array = AA.commanded[AA.not_fulfilled_idx]
     AA.not_fulfilled_tree = KDTree(AA.not_fulfilled_array)
@@ -215,6 +222,7 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
     AA.antpos_norms = np.linalg.norm(AA.antpos, axis=1)
     AA.n_added = 0
     AA.flip_tolerance = 1e-5
+
 
     if show_plot:
         AA.plot_fig, AA.plot_ax = None, None
@@ -254,7 +262,7 @@ def chunkify(lst, n):
 
 def try_new_antpos(antpos, new_antpos, commanded, fulfill_tolerance, diameter, max_array_size, center_at_origin):
     if geometry.collision_check(np.vstack([antpos, new_antpos]), diameter):
-        return False, False, np.inf
+        return False, False, float('inf')
     temp_array_size = geometry.get_array_size(np.vstack([antpos, new_antpos]))
     if max_array_size is None:
         return True, True, temp_array_size
@@ -274,7 +282,8 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
         (chunk, AA.antpos, AA.commanded, AA.not_fulfilled_tree, AA.not_fulfilled_array,
          AA.fulfill_tolerance, AA.diameter, AA.max_array_size, AA.center_at_origin,
          AA.minimize_array_size, AA.maximize_antenna_spacing, AA.n_samples, try_new_antpos,
-         geometry.get_min_distance_from_new_antpos, AA.uv_cell_size, AA.flip_tolerance)
+         geometry.get_min_distance_from_new_antpos, AA.uv_cell_size, AA.flip_tolerance,
+         AA.not_fulfilled_idx, AA.n_remaining_fulfillments)
         for chunk in chunks
     ]
     
@@ -283,7 +292,7 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
 
     best_fulfilled_count = -1
     best_spacing_metric = 0
-    best_size_metric = np.inf
+    best_size_metric = float('inf')
     best_candidate = None
     global_success = False
 
@@ -331,7 +340,7 @@ def evaluate_candidate_sequential(AA, remaining_combinations):
     return global_success, best_candidate
 
 
-def place_antenna(AA, best_candidate):
+def place_antenna_old(AA, best_candidate):
     i, j, k = best_candidate
     
     new_antpos = geometry.compute_new_antpos(i, j, k, AA.antpos, AA.commanded)
@@ -360,7 +369,44 @@ def place_antenna(AA, best_candidate):
     AA.not_fulfilled_tree = KDTree(AA.not_fulfilled_array)
     AA.antpos_norms = np.linalg.norm(AA.antpos, axis=1)
     
+def place_antenna(AA, best_candidate):
+    i, j, k = best_candidate
+    
+    new_antpos = geometry.compute_new_antpos(i, j, k, AA.antpos, AA.commanded)
+    
+    # Get new fulfilled points and score
+    new_fulfilled, fulfillment_score = geometry.get_new_fulfilled(
+            new_antpos=new_antpos,
+            antpos=AA.antpos,
+            not_fulfilled_tree=AA.not_fulfilled_tree,
+            not_fulfilled_array=AA.not_fulfilled_array,
+            fulfill_tolerance=AA.fulfill_tolerance,
+            uv_cell_size=AA.uv_cell_size,
+            n_samples=AA.n_samples,
+            not_fulfilled_idx=AA.not_fulfilled_idx,
+            n_remaining_fulfillments=AA.n_remaining_fulfillments)
 
+    # Place the antenna
+    AA.antpos = np.vstack([AA.antpos, new_antpos])
+    AA.n_added += 1
+    
+    # Update fulfillment status and remaining fulfillments in one efficient call
+    AA.fulfilled_idx, AA.not_fulfilled_idx, AA.n_remaining_fulfillments = geometry.check_fulfillment(
+        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, n_samples=AA.n_samples
+    )
+    
+    # Update history
+    AA.history["new_fulfilled"].append(new_fulfilled)
+    AA.history["n_fulfilled"].append(len(AA.fulfilled_idx))
+    AA.history["n_new_fulfilled"].append(len(new_fulfilled))
+    AA.history["n_not_fulfilled"].append(AA.history["n_not_fulfilled"][-1] - len(new_fulfilled))
+    AA.history["efficiency"].append(utils.get_efficiency(len(AA.fulfilled_idx), AA.antpos))
+    
+    # Update array completion status and spatial structures
+    AA.array_is_complete = len(AA.not_fulfilled_idx) == 0
+    AA.not_fulfilled_array = AA.commanded[AA.not_fulfilled_idx]
+    AA.not_fulfilled_tree = KDTree(AA.not_fulfilled_array)
+    AA.antpos_norms = np.linalg.norm(AA.antpos, axis=1)
 
 
 def should_terminate(AA, compare_all_commanded, compare_all_antpos):
@@ -409,7 +455,7 @@ def print_status(AA, additional_output=None, log_path=None):
         print(status_str)
         
         
-def find_local_extrema(chunk, antpos, commanded, not_fulfilled_tree, not_fulfilled_array,
+def find_local_extrema_old(chunk, antpos, commanded, not_fulfilled_tree, not_fulfilled_array,
                        fulfill_tolerance, diameter, max_array_size, center_at_origin,
                        minimize_array_size, maximize_antenna_spacing, n_samples, try_new_antpos,
                        get_min_distance, uv_cell_size, flip_tolerance):
@@ -417,7 +463,7 @@ def find_local_extrema(chunk, antpos, commanded, not_fulfilled_tree, not_fulfill
     max_n_new = 0
     max_spacing = 0
     best_i = best_j = best_k = None
-    min_array_size = np.inf
+    min_array_size = float('inf')
     success = False
     rejected = []
 
@@ -447,3 +493,56 @@ def find_local_extrema(chunk, antpos, commanded, not_fulfilled_tree, not_fulfill
 
     return (success, max_n_new, max_spacing, min_array_size, best_i, best_j, best_k, rejected)
 
+def find_local_extrema(chunk, antpos, commanded, not_fulfilled_tree, not_fulfilled_array,
+                       fulfill_tolerance, diameter, max_array_size, center_at_origin,
+                       minimize_array_size, maximize_antenna_spacing, n_samples, try_new_antpos,
+                       get_min_distance, uv_cell_size, flip_tolerance, not_fulfilled_idx=None, 
+                       n_remaining_fulfillments=None):
+    
+    max_fulfillment_score = 0  # Changed from max_n_new
+    max_spacing = 0
+    best_i = best_j = best_k = None
+    min_array_size = float('inf')
+    success = False
+    rejected = []
+
+    for i, j, k in chunk:
+        new_antpos = geometry.compute_new_antpos(i, j, k, antpos, commanded)
+        collision, valid_size, temp_size = try_new_antpos(antpos, new_antpos, commanded, fulfill_tolerance,
+                                                           diameter, max_array_size, center_at_origin)
+        if collision and valid_size:
+            success = True
+            
+            # Use new get_new_fulfilled that returns fulfillment_score
+            
+            new_fulfilled, fulfillment_score = geometry.get_new_fulfilled(
+                new_antpos = new_antpos, 
+                antpos = antpos, 
+                not_fulfilled_tree = not_fulfilled_tree,
+                not_fulfilled_array = not_fulfilled_array,
+                fulfill_tolerance = fulfill_tolerance,
+                uv_cell_size = uv_cell_size,
+                n_samples = n_samples,
+                flip_tolerance = flip_tolerance,
+                not_fulfilled_idx = not_fulfilled_idx,
+                n_remaining_fulfillments = n_remaining_fulfillments
+            )
+            
+            spacing = get_min_distance(antpos, new_antpos)
+            
+            if fulfillment_score > max_fulfillment_score:
+                best_i, best_j, best_k = i, j, k
+                max_fulfillment_score = fulfillment_score
+                max_spacing = spacing
+                min_array_size = temp_size
+            elif fulfillment_score == max_fulfillment_score:
+                if minimize_array_size and temp_size < min_array_size:
+                    best_i, best_j, best_k = i, j, k
+                    min_array_size = temp_size
+                elif maximize_antenna_spacing and spacing > max_spacing:
+                    best_i, best_j, best_k = i, j, k
+                    max_spacing = spacing
+        else:
+            rejected.append((i, j, k))
+
+    return (success, max_fulfillment_score, max_spacing, min_array_size, best_i, best_j, best_k, rejected)

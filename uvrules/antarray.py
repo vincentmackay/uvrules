@@ -191,8 +191,8 @@ class AntArray:
 
     def check_fulfillment(self, flip_tolerance=0.0, verbose=False) -> tuple:
         """Check and store which commanded points are fulfilled."""
-        self.fulfilled_idx, self.not_fulfilled_idx = geometry.check_fulfillment(self, flip_tolerance=flip_tolerance, verbose=verbose)
-        return self.fulfilled_idx, self.not_fulfilled_idx
+        self.fulfilled_idx, self.not_fulfilled_idx, self.n_remaining_fulfillments = geometry.check_fulfillment(self, flip_tolerance=flip_tolerance, verbose=verbose)
+        return self.fulfilled_idx, self.not_fulfilled_idx, self.n_remaining_fulfillments
 
     def get_baseline_counts(self, verbose=True) -> list:
         """Compute and store baseline loss counts."""

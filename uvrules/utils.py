@@ -53,6 +53,9 @@ def get_uvs_from_baseline_select(array_config: dict, baseline_select: list,
 def select_baselines(AA = None,
                      commanded = None,
                      antpos = None,
+                     use_commanded = True,
+                     max_bl = None,
+                     min_bl = None,
                      fulfill_tolerance = None,
                      flip_tolerance = 0.0,
                      avoid_redundancies = True) -> list:
@@ -67,10 +70,16 @@ def select_baselines(AA = None,
         Commanded uv points.
     antpos : np.ndarray, optional
         Antenna positions.
+    use_commanded : bool, default=True
+        If True, use commanded uv points; otherwise, do all points within min_bl and max_bl.
+    max_bl : float, optional
+        Maximum baseline length to consider.
+    min_bl : float, optional
+        Minimum baseline length to consider.
+    fulfill_tolerance : float, default = 1e-5
+        Distance tolerance to match uv points.
     flip_tolerance : float, optional
         Tolerance for flipping uv points.
-    fulfill_tolerance : float, default = 0.0
-        Distance tolerance to match uv points.
     avoid_redundancies : bool, default=True
         If True, avoid selecting redundant baselines.
 
@@ -81,14 +90,21 @@ def select_baselines(AA = None,
     """
 
     if AA is not None:
-        commanded = AA.commanded
-        antpos = AA.antpos
-        fulfill_tolerance = AA.fulfill_tolerance
+        if commanded is None:
+            commanded = AA.commanded
+        if antpos is None:
+            antpos = AA.antpos
+        if fulfill_tolerance is None:
+            fulfill_tolerance = AA.fulfill_tolerance
+        if min_bl is None:
+            min_bl = AA.min_bl
+        if max_bl is None:
+            max_bl = AA.max_bl
     elif commanded is None or antpos is None or fulfill_tolerance is None:
         raise ValueError("Either AA or commanded, antpos, and fulfill_tolerance must be provided.")
 
 
-    fi, nfi = AA.check_fulfillment()
+    fi, nfi, _ = AA.check_fulfillment()
     commanded_fulfilled = commanded[fi]
     not_fulfilled = np.copy(commanded_fulfilled)
     antpairs = []
@@ -96,38 +112,67 @@ def select_baselines(AA = None,
     if not avoid_redundancies:
         n_total_baselines = len(antpos) * (len(antpos) - 1) // 2
 
+    if avoid_redundancies and not use_commanded:
+        uv_list = []
+
+
+
+
     for i, pos1 in enumerate(antpos):
         for j, pos2 in enumerate(antpos):
             if j <= i:
                 continue
+
+            pos1= antpos[i]
+            pos2 = antpos[j]
             u = pos2[0] - pos1[0]
             v = pos2[1] - pos1[1]
             if (v < -flip_tolerance) | ((np.abs(v) <= flip_tolerance) & (u < 0)):
                 u *= -1
                 v *= -1
             uv = np.array([u, v])
+            length = np.linalg.norm(uv)
 
-
-            if avoid_redundancies: # Check whether the new uv point is one of the unfulfilled one
-                idx_new_uv = np.where(np.linalg.norm(not_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
-            else: # Just check whether the new uv point is commanded
-                idx_new_uv = np.where(np.linalg.norm(commanded_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
-
-            if len(idx_new_uv[0]) < 1:
+            if min_bl is not None and length < min_bl:
                 continue
-            else:
-                if avoid_redundancies:
-                    not_fulfilled = np.delete(not_fulfilled, idx_new_uv, axis=0)
-                antpairs.append((i, j))
+            elif max_bl is not None and length > max_bl:
+                continue
+            
+            if use_commanded:
 
-            if len(antpairs) % 1000 == 0:
-                if avoid_redundancies:
-                    print(f'{len(not_fulfilled)}/{len(commanded_fulfilled)} remaining, {len(antpairs)} baselines selected.')
+                if avoid_redundancies: # Check whether the new uv point is one of the unfulfilled one
+                    idx_new_uv = np.where(np.linalg.norm(not_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
+                else: # Just check whether the new uv point is commanded
+                    idx_new_uv = np.where(np.linalg.norm(commanded_fulfilled - uv, axis=1, ord=np.inf) < fulfill_tolerance)
+
+                if len(idx_new_uv[0]) < 1:
+                    continue
                 else:
-                    print(f'{len(antpairs)}/{n_total_baselines} done.')
-            if len(not_fulfilled) < 1 and avoid_redundancies:
-                print('Baseline selection complete.')
-                return antpairs
+                    if avoid_redundancies:
+                        not_fulfilled = np.delete(not_fulfilled, idx_new_uv, axis=0)
+                    antpairs.append((i, j))
+
+                if len(antpairs) % 1000 == 0:
+                    if avoid_redundancies:
+                        print(f'{len(not_fulfilled)}/{len(commanded_fulfilled)} remaining, {len(antpairs)} baselines selected.')
+                    else:
+                        print(f'{len(antpairs)}/{n_total_baselines} done.')
+                if len(not_fulfilled) < 1 and avoid_redundancies:
+                    print('Baseline selection complete.')
+                    return antpairs
+            else:
+                if avoid_redundancies and len(uv_list) > 0:
+                    # Check whether the new uv point is already in the list
+                    if np.any(np.linalg.norm(np.asarray(uv_list) - uv, axis=1) < fulfill_tolerance):
+                        continue
+                    else:
+                        if len(uv_list) % 1000 == 0:
+                            print(f'{len(antpairs)} baselines selected so far.')
+                        antpairs.append((i, j))
+                        uv_list.append(uv)
+                else:
+                    antpairs.append((i, j))
+                    uv_list.append(uv)
 
     print('All baselines done.')
     return antpairs
@@ -506,6 +551,35 @@ def nudge_antpos(antpos: np.ndarray, diameter: float, fulfill_tolerance: float) 
     return antpos
 
 
+def generate_position_errors(antpos: np.ndarray, diameter: float, sigma_pos: float = 0.1, max_attempts: int = 100000) -> np.ndarray:
+    """
+    Generate random position errors for antenna positions.
+    """
+    result_antpos = antpos.copy()  # Shallow copy
+    collision_count = 0
+    
+    for i in range(len(antpos)):
+        original_pos = result_antpos[i].copy()
+        while True:
+            # Generate nudge
+            nudge = np.random.uniform(-sigma_pos, sigma_pos, 2)
+            result_antpos[i] = original_pos + nudge
+            
+            # Only check if THIS antenna collides with others
+            # Create array with just this antenna and all others
+            if not geometry.collision_check_single_antenna(result_antpos, i, diameter):
+                break  # Success!
+            else:
+                collision_count += 1
+                if collision_count % 1000 == 0:
+                    print(f"Collision count: {collision_count}")
+                    clear_output(wait=True)
+        
+    
+    return result_antpos
+
+
+
 
 def format_time(seconds: float) -> str:
     """
@@ -547,7 +621,7 @@ def export_antpos_csv(antpos: np.ndarray, path: str, include_index: bool = False
     np.savetxt(path, data, delimiter=",", fmt="%.8f")
 
 
-def get_baseline_counts(AA, verbose: bool = True) -> list:
+def get_baseline_counts(AA, n_samples = 1, verbose: bool = True) -> list:
     """
     Calculate number of unfulfilled baselines when removing each antenna.
 
@@ -569,12 +643,13 @@ def get_baseline_counts(AA, verbose: bool = True) -> list:
             clear_output(wait=True)
             print(f'{i+1}/{len(AA.antpos)}')
         antpos_temp = np.delete(AA.antpos, i, axis=0)
-        _, not_fulfilled_idx = geometry.check_fulfillment(
+        _, not_fulfilled_idx, n_remaining_fulfillments  = geometry.check_fulfillment(
             commanded=AA.commanded,
             antpos=antpos_temp,
             fulfill_tolerance=AA.fulfill_tolerance,
+            n_samples = n_samples
         )
-        baseline_counts.append(len(not_fulfilled_idx))
+        baseline_counts.append(np.sum(n_remaining_fulfillments))
     return baseline_counts
 
 
