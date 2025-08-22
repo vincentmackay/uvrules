@@ -26,7 +26,7 @@ def add_ant_rules(
     n_to_add=-1,
     minimize_array_size=True,
     maximize_antenna_spacing=False,
-    n_samples = 1,
+    nsamples = 1,
     save_file=False,
     path_to_file=None,
     verbose=True,
@@ -65,7 +65,7 @@ def add_ant_rules(
         Break ties by minimizing array size.
     maximize_antenna_spacing : bool
         Break ties by maximizing minimum antenna spacing.
-    n_samples : int
+    nsamples : int
         Number of samples per baseline required for fulfillment.
     save_file : bool
         Whether to save AntArray to disk after each step.
@@ -95,7 +95,7 @@ def add_ant_rules(
         max_array_size,
         minimize_array_size,
         maximize_antenna_spacing,
-        n_samples,
+        nsamples,
         path_to_file,
         verbose,
         show_plot,
@@ -157,13 +157,13 @@ def add_ant_rules(
 
 
 def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_origin, max_array_size,
-                      minimize_array_size, maximize_antenna_spacing, n_samples, path_to_file, verbose, show_plot, num_cores):
+                      minimize_array_size, maximize_antenna_spacing, nsamples, path_to_file, verbose, show_plot, num_cores):
     """Prepare the AntArray for a RULES run."""
     is_default_antpos = np.array_equal(AA.antpos, np.array([[0., 0.]]))
     is_invalid_shape = AA.antpos.shape[1] != 2
     AA.starting_from_scratch = is_default_antpos or is_invalid_shape
 
-    AA.n_samples = n_samples
+    AA.nsamples = nsamples
 
     if AA.starting_from_scratch:
         AA.antpos = np.array([[0, 0]])
@@ -200,11 +200,11 @@ def prepare_algorithm(AA, commanded_order, compare_all_commanded, center_at_orig
         AA.commanded = AA.commanded[np.argsort(commanded_order * np.linalg.norm(AA.commanded, axis=1))]
 
 
-    AA.n_samples = n_samples
+    AA.nsamples = nsamples
     
     # Get fulfillment status and remaining fulfillments in one call
     AA.fulfilled_idx, AA.not_fulfilled_idx, AA.n_remaining_fulfillments = geometry.check_fulfillment(
-        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, n_samples=AA.n_samples
+        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, nsamples=AA.nsamples
     )
 
 
@@ -281,7 +281,7 @@ def evaluate_candidates_parallel(AA, remaining_combinations):
     args_for_starmap = [
         (chunk, AA.antpos, AA.commanded, AA.not_fulfilled_tree, AA.not_fulfilled_array,
          AA.fulfill_tolerance, AA.diameter, AA.max_array_size, AA.center_at_origin,
-         AA.minimize_array_size, AA.maximize_antenna_spacing, AA.n_samples, try_new_antpos,
+         AA.minimize_array_size, AA.maximize_antenna_spacing, AA.nsamples, try_new_antpos,
          geometry.get_min_distance_from_new_antpos, AA.uv_cell_size, AA.flip_tolerance,
          AA.not_fulfilled_idx, AA.n_remaining_fulfillments)
         for chunk in chunks
@@ -351,13 +351,13 @@ def place_antenna_old(AA, best_candidate):
         not_fulfilled_array=AA.not_fulfilled_array,
         fulfill_tolerance=AA.fulfill_tolerance,
         uv_cell_size=AA.uv_cell_size,
-        n_samples = AA.n_samples
+        nsamples = AA.nsamples
     )
 
     AA.antpos = np.vstack([AA.antpos, new_antpos])
     AA.n_added += 1
     AA.fulfilled_idx, AA.not_fulfilled_idx = geometry.check_fulfillment(
-        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, n_samples = AA.n_samples
+        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, nsamples = AA.nsamples
     )
     AA.history["new_fulfilled"].append(new_fulfilled)
     AA.history["n_fulfilled"].append(len(AA.fulfilled_idx))
@@ -382,7 +382,7 @@ def place_antenna(AA, best_candidate):
             not_fulfilled_array=AA.not_fulfilled_array,
             fulfill_tolerance=AA.fulfill_tolerance,
             uv_cell_size=AA.uv_cell_size,
-            n_samples=AA.n_samples,
+            nsamples=AA.nsamples,
             not_fulfilled_idx=AA.not_fulfilled_idx,
             n_remaining_fulfillments=AA.n_remaining_fulfillments)
 
@@ -392,7 +392,7 @@ def place_antenna(AA, best_candidate):
     
     # Update fulfillment status and remaining fulfillments in one efficient call
     AA.fulfilled_idx, AA.not_fulfilled_idx, AA.n_remaining_fulfillments = geometry.check_fulfillment(
-        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, n_samples=AA.n_samples
+        commanded=AA.commanded, antpos=AA.antpos, fulfill_tolerance=AA.fulfill_tolerance, nsamples=AA.nsamples
     )
     
     # Update history
@@ -457,7 +457,7 @@ def print_status(AA, additional_output=None, log_path=None):
         
 def find_local_extrema_old(chunk, antpos, commanded, not_fulfilled_tree, not_fulfilled_array,
                        fulfill_tolerance, diameter, max_array_size, center_at_origin,
-                       minimize_array_size, maximize_antenna_spacing, n_samples, try_new_antpos,
+                       minimize_array_size, maximize_antenna_spacing, nsamples, try_new_antpos,
                        get_min_distance, uv_cell_size, flip_tolerance):
     
     max_n_new = 0
@@ -474,7 +474,7 @@ def find_local_extrema_old(chunk, antpos, commanded, not_fulfilled_tree, not_ful
         if collision and valid_size:
             success = True
             new_fulfilled = geometry.get_new_fulfilled(new_antpos, antpos, not_fulfilled_tree, not_fulfilled_array,
-                                                       fulfill_tolerance, uv_cell_size, n_samples, flip_tolerance)
+                                                       fulfill_tolerance, uv_cell_size, nsamples, flip_tolerance)
             spacing = get_min_distance(antpos, new_antpos)
             if len(new_fulfilled) > max_n_new:
                 best_i, best_j, best_k = i, j, k
@@ -495,7 +495,7 @@ def find_local_extrema_old(chunk, antpos, commanded, not_fulfilled_tree, not_ful
 
 def find_local_extrema(chunk, antpos, commanded, not_fulfilled_tree, not_fulfilled_array,
                        fulfill_tolerance, diameter, max_array_size, center_at_origin,
-                       minimize_array_size, maximize_antenna_spacing, n_samples, try_new_antpos,
+                       minimize_array_size, maximize_antenna_spacing, nsamples, try_new_antpos,
                        get_min_distance, uv_cell_size, flip_tolerance, not_fulfilled_idx=None, 
                        n_remaining_fulfillments=None):
     
@@ -522,7 +522,7 @@ def find_local_extrema(chunk, antpos, commanded, not_fulfilled_tree, not_fulfill
                 not_fulfilled_array = not_fulfilled_array,
                 fulfill_tolerance = fulfill_tolerance,
                 uv_cell_size = uv_cell_size,
-                n_samples = n_samples,
+                nsamples = nsamples,
                 flip_tolerance = flip_tolerance,
                 not_fulfilled_idx = not_fulfilled_idx,
                 n_remaining_fulfillments = n_remaining_fulfillments

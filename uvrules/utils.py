@@ -112,7 +112,7 @@ def select_baselines(AA = None,
     if not avoid_redundancies:
         n_total_baselines = len(antpos) * (len(antpos) - 1) // 2
 
-    if avoid_redundancies and not use_commanded:
+    if not use_commanded:
         uv_list = []
 
 
@@ -621,7 +621,7 @@ def export_antpos_csv(antpos: np.ndarray, path: str, include_index: bool = False
     np.savetxt(path, data, delimiter=",", fmt="%.8f")
 
 
-def get_baseline_counts(AA, n_samples = 1, verbose: bool = True) -> list:
+def get_baseline_counts(AA, nsamples = 1, verbose: bool = True) -> list:
     """
     Calculate number of unfulfilled baselines when removing each antenna.
 
@@ -647,7 +647,7 @@ def get_baseline_counts(AA, n_samples = 1, verbose: bool = True) -> list:
             commanded=AA.commanded,
             antpos=antpos_temp,
             fulfill_tolerance=AA.fulfill_tolerance,
-            n_samples = n_samples
+            nsamples = nsamples
         )
         baseline_counts.append(np.sum(n_remaining_fulfillments))
     return baseline_counts

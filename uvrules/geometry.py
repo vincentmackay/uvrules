@@ -208,10 +208,10 @@ def check_fulfillment_very_old(AA = None, commanded = None, antpos = None, fulfi
 
 
 def check_fulfillment_old(AA=None, commanded=None, antpos=None, fulfill_tolerance=None,
-                      p_norm=float('inf'), flip_tolerance=0.0, verbose=False, n_samples=1):
+                      p_norm=float('inf'), flip_tolerance=0.0, verbose=False, nsamples=1):
     """Returns the indices of fulfilled and unfulfilled points.
     
-    A commanded point is considered fulfilled if at least `n_samples` realized
+    A commanded point is considered fulfilled if at least `nsamples` realized
     uv points fall within `fulfill_tolerance` of it.
     """
 
@@ -231,23 +231,23 @@ def check_fulfillment_old(AA=None, commanded=None, antpos=None, fulfill_toleranc
     idx_fulfilled = tree.query_ball_point(commanded, r=fulfill_tolerance, p=p_norm)
 
     # Count how many realized points are within the ball for each commanded point
-    fulfilled_mask = np.asarray([len(idx) >= n_samples for idx in idx_fulfilled])
+    fulfilled_mask = np.asarray([len(idx) >= nsamples for idx in idx_fulfilled])
 
     fulfilled_indices = np.where(fulfilled_mask)[0]
     not_fulfilled_indices = np.where(~fulfilled_mask)[0]
 
     if verbose:
-        print(f'{len(fulfilled_indices)}/{len(commanded)} fulfilled (≥{n_samples} samples), '
+        print(f'{len(fulfilled_indices)}/{len(commanded)} fulfilled (≥{nsamples} samples), '
               f'{len(not_fulfilled_indices)}/{len(commanded)} remaining.')
 
     return fulfilled_indices, not_fulfilled_indices
 
 
 def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=None,
-                     p_norm=float('inf'), flip_tolerance=0.0, verbose=False, n_samples=1):
+                     p_norm=float('inf'), flip_tolerance=0.0, verbose=False, nsamples=1):
     """
     Returns the indices of fulfilled and unfulfilled points.
-    A commanded point is considered fulfilled if at least `n_samples` realized
+    A commanded point is considered fulfilled if at least `nsamples` realized
     uv points fall within `fulfill_tolerance` of it.
     
     Returns:
@@ -255,8 +255,8 @@ def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=No
     fulfilled_indices : ndarray
     not_fulfilled_indices : ndarray  
     n_remaining_fulfillments : ndarray or None
-        If n_samples > 1, returns array of remaining fulfillments needed per commanded point.
-        If n_samples == 1, returns None.
+        If nsamples > 1, returns array of remaining fulfillments needed per commanded point.
+        If nsamples == 1, returns None.
     """
     if AA is not None:
         commanded = AA.commanded
@@ -266,8 +266,8 @@ def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=No
     if len(antpos.shape) < 2 or len(antpos) < 2:
         empty_fulfilled = np.array([], dtype=int)
         all_not_fulfilled = np.arange(len(commanded), dtype=int)
-        if n_samples > 1:
-            n_remaining = n_samples * np.ones(len(commanded), dtype=int)
+        if nsamples > 1:
+            n_remaining = nsamples * np.ones(len(commanded), dtype=int)
             return empty_fulfilled, all_not_fulfilled, n_remaining
         else:
             return empty_fulfilled, all_not_fulfilled, None
@@ -282,29 +282,29 @@ def check_fulfillment(AA=None, commanded=None, antpos=None, fulfill_tolerance=No
     # Count how many realized points are within the ball for each commanded point
     hit_counts = np.asarray([len(idx) for idx in idx_fulfilled])
     
-    # Determine fulfilled vs not fulfilled based on n_samples threshold
-    fulfilled_mask = hit_counts >= n_samples
+    # Determine fulfilled vs not fulfilled based on nsamples threshold
+    fulfilled_mask = hit_counts >= nsamples
     fulfilled_indices = np.where(fulfilled_mask)[0]
     not_fulfilled_indices = np.where(~fulfilled_mask)[0]
     
     if verbose:
-        print(f'{len(fulfilled_indices)}/{len(commanded)} fulfilled (≥{n_samples} samples), '
+        print(f'{len(fulfilled_indices)}/{len(commanded)} fulfilled (≥{nsamples} samples), '
               f'{len(not_fulfilled_indices)}/{len(commanded)} remaining.')
     
-    # Calculate remaining fulfillments if n_samples > 1
-    if n_samples > 1:
-        n_remaining_fulfillments = np.maximum(0, n_samples - hit_counts)
+    # Calculate remaining fulfillments if nsamples > 1
+    if nsamples > 1:
+        n_remaining_fulfillments = np.maximum(0, nsamples - hit_counts)
         return fulfilled_indices, not_fulfilled_indices, n_remaining_fulfillments
     else:
         return fulfilled_indices, not_fulfilled_indices, len(not_fulfilled_indices)
 
 def get_new_fulfilled_old(new_antpos=None, antpos=None, not_fulfilled_tree=None, not_fulfilled_array=None,
-                      fulfill_tolerance=0., uv_cell_size=1., n_samples = 1, flip_tolerance = 1e-5, p_norm=float('inf')):
+                      fulfill_tolerance=0., uv_cell_size=1., nsamples = 1, flip_tolerance = 1e-5, p_norm=float('inf')):
     """
     Returns the set of newly fulfilled uv points for a candidate antenna placement.
 
-    As of the current implementation, even if the array asks for n_samples > 1, it will return the uv points that
-    are fulfilled at least once, i.e. it does not check if the number of fulfilled points is at least n_samples.
+    As of the current implementation, even if the array asks for nsamples > 1, it will return the uv points that
+    are fulfilled at least once, i.e. it does not check if the number of fulfilled points is at least nsamples.
     Parameters:
     -----------
     - new_antpos : ndarray of shape (2,), position of candidate antenna
@@ -337,11 +337,11 @@ def get_new_fulfilled_old(new_antpos=None, antpos=None, not_fulfilled_tree=None,
 
 
 def get_new_fulfilled(new_antpos=None, antpos=None, not_fulfilled_tree=None, not_fulfilled_array=None,
-                     fulfill_tolerance=0., uv_cell_size=1., n_samples=1, flip_tolerance=1e-5,
+                     fulfill_tolerance=0., uv_cell_size=1., nsamples=1, flip_tolerance=1e-5,
                      not_fulfilled_idx=None, n_remaining_fulfillments=None, p_norm=float('inf')):
     """
     Returns the set of newly fulfilled uv points for a candidate antenna placement.
-    Now supports n_samples > 1 by counting incremental progress toward fulfillment.
+    Now supports nsamples > 1 by counting incremental progress toward fulfillment.
     
     Parameters:
     -----------
@@ -355,7 +355,7 @@ def get_new_fulfilled(new_antpos=None, antpos=None, not_fulfilled_tree=None, not
     Returns:
     --------
     - newly_fulfilled_points : ndarray of matched uv coordinates that are newly fulfilled
-    - fulfillment_score : int, total "fulfillment credit" accounting for n_samples
+    - fulfillment_score : int, total "fulfillment credit" accounting for nsamples
     """
     if new_antpos is None or antpos is None or not_fulfilled_tree is None or not_fulfilled_array is None:
         raise ValueError("new_antpos, antpos, not_fulfilled_tree and not_fulfilled_array must be provided.")
@@ -373,11 +373,11 @@ def get_new_fulfilled(new_antpos=None, antpos=None, not_fulfilled_tree=None, not
     matched_indices = np.unique(np.concatenate(matches)).astype(int)
     newly_fulfilled_points = not_fulfilled_array[matched_indices]
     
-    # If n_samples = 1 or no remaining fulfillments tracking, return old behavior
-    if n_samples == 1 or n_remaining_fulfillments is None or not_fulfilled_idx is None:
+    # If nsamples = 1 or no remaining fulfillments tracking, return old behavior
+    if nsamples == 1 or n_remaining_fulfillments is None or not_fulfilled_idx is None:
         return newly_fulfilled_points, len(newly_fulfilled_points)
     
-    # For n_samples > 1, calculate fulfillment score
+    # For nsamples > 1, calculate fulfillment score
     fulfillment_score = 0
     
     # Count hits per commanded point
