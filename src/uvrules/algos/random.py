@@ -8,8 +8,8 @@ Created on Thu Mar 27 16:35:28 2025
 
 import numpy as np
 from datetime import datetime
-from uvrules.geometry import collision_check
-from uvrules import plotting
+from ..geometry import collision_check
+from .. import plotting
 from IPython.display import clear_output
 
 def add_ant_random(AA, n_to_add=None, n_total=100,

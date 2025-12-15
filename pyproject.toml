@@ -11,7 +11,8 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
+license = { file = "LICENSE" } 
+
 
 dependencies = [
     "numpy",
@@ -21,3 +22,7 @@ dependencies = [
     "finufft",
     "ipython",
 ]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]

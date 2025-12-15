@@ -11,11 +11,39 @@ Created on Tue May 21 16:45:26 2024
 import numpy as np
 import os
 import pickle
+import warnings
+import inspect
 from astropy import constants
-import uvrules.utils as utils
-import uvrules.algos.rules
-import uvrules.algos.random
-import uvrules.geometry as geometry
+
+from . import utils
+from . import geometry
+from .algos import rules as _rules
+from .algos import random
+
+_RULES_PARAM_NAMES = [
+    name for name in inspect.signature(rules.add_ant_rules).parameters
+    if name != "AA"  # first positional is the AntArray instance
+]
+_RULES_PARAM_SET = set(_RULES_PARAM_NAMES)
+
+ANTARRAY_PARAM_NAMES = {
+    "antpos",
+    "ref_wl",
+    "ref_freq",
+    "diameter",
+    "diameter_lambda",
+    "max_bl",
+    "max_bl_lambda",
+    "min_bl",
+    "min_bl_lambda",
+    "packing_density",   # aka "rho"
+    "uv_cell_size",
+    "fulfill_tolerance",
+    "max_array_size",
+    "commanded",
+}
+
+
 
 
 class AntArray:
@@ -83,11 +111,18 @@ class AntArray:
                  max_bl: float = None,
                  fulfill_tolerance: float = None,
                  p_norm: float = np.inf,
-                 verbose: bool = False):
+                 verbose: bool = False,
+                 **rules_kwargs):
         """
         Initialize an AntArray instance.
 
-        (Docstring identical to previous version)
+        **rules_kwargs :
+            Additional keyword arguments that will be passed by default to
+            :func:`uvrules.algos.rules.add_ant_rules`. These correspond to the
+            parameters of :func:`add_ant_rules` (e.g. ``commanded_order``,
+            ``n_to_add``, ``compare_all_commanded``, etc.). Any values supplied
+            here can be overridden by keyword arguments passed directly to
+            :meth:`AntArray.add_ant_rules`. 
         """
         self.verbose = verbose
         self.antpos = np.array([[0.0, 0.0]])
@@ -122,6 +157,9 @@ class AntArray:
         self.baseline_counts = None
         self.efficiency = None
         self.antpairs = None
+
+        self._rules_defaults: dict = {}
+        self._set_rules_defaults(**rules_kwargs)
 
     def _verbose_print(self, message: str):
         """Print a message if verbose mode is active."""
@@ -218,6 +256,45 @@ class AntArray:
         else:
             raise AttributeError("Efficiency history not found. Run antenna placement first.")
 
+    def _set_rules_defaults(self, **rules_kwargs):
+        """
+        Update the default keyword arguments that will be passed to add_ant_rules.
+
+        This is used internally by __init__, but can also be used by advanced
+        users to tweak defaults between runs.
+        """
+        if not hasattr(self, "_rules_defaults"):
+            self._rules_defaults = {}
+        self._rules_defaults.update(rules_kwargs)
+
+
+        for key, value in rules_kwargs.items():
+            if key not in _RULES_PARAM_SET:
+                raise TypeError(
+                    f"AntArray got unexpected RULES parameter '{key}'. "
+                    f"Valid parameters are: {_RULES_PARAM_NAMES}"
+                )
+            self._rules_defaults[key] = value
+
+
+    def _merge_rules_kwargs(self, call_kwargs):
+        """
+        Merge RULES defaults stored on this AntArray with call-time kwargs.
+        Returns a merged dictionary.
+
+        call-time args override defaults.
+        """
+        # Get defaults stored during __init__
+        defaults = getattr(self, "_rules_defaults", {}).copy()
+
+        # Override with call-time arguments
+        for key, value in call_kwargs.items():
+            defaults[key] = value
+
+        return defaults
+
+
+
     # ---------- Missing attributes management -----------
 
     def check_missing_attributes(self) -> dict:
@@ -297,13 +374,34 @@ class AntArray:
 
     # ---------- Algorithm launching wrappers -----------
 
+
+    
     def add_ant_rules(self, **kwargs):
-        """Add antennas using the RULES algorithm."""
-        return uvrules.algos.rules.add_ant_rules(self, **kwargs)
+        """
+        Run the RULES algorithm using defaults stored on this AntArray,
+        unless overridden by explicit call-time arguments.
+        """
+        # Merge defaults + overrides
+        merged = self._merge_rules_kwargs(kwargs)
+
+        # Optional: warn if overriding defaults
+        for k, v in kwargs.items():
+            if k in self._rules_defaults:
+                warnings.warn(
+                    f"Overriding default RULES parameter '{k}' defined on "
+                    f"AntArray (default={self._rules_defaults[k]!r}) with {v!r}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+        # Call the internal algorithm
+        return _rules._add_ant_rules_impl(self, **merged)
+
+
 
     def add_ant_random(self, **kwargs):
         """Add antennas using random algorithm."""
-        return uvrules.algos.random.add_ant_random(self, **kwargs)
+        return random.add_ant_random(self, **kwargs)
 
     # ---------- Save/load -----------
 

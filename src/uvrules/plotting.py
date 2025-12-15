@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm, colors
 from finufft import nufft2d1
-from uvrules.geometry import antpos_to_uv
+from .geometry import antpos_to_uv
 
 
 def plot_array(AA,

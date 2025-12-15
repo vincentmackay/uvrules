@@ -8,16 +8,20 @@ from scipy.spatial import KDTree
 from multiprocessing import Pool, cpu_count
 import warnings
 from itertools import product
-import uvrules.geometry as geometry
-import uvrules.plotting as plotting
-import uvrules.utils as utils
+from .. import geometry
+from .. import plotting
+from .. import utils
 from datetime import datetime
 
-def add_ant_rules(
+def add_ant_rules(AA, **kwargs):
+    """Public module-level entry point."""
+    return AA.add_ant_rules(**kwargs)
+
+def _add_ant_rules_implementation(
     AA,
     commanded_order=1,
     compare_all_commanded=False,
-    compare_all_antpos=False,
+    compare_all_antpos=True,
     order_antpos_by_magnitude=False,
     antpos_order=1,
     center_at_origin=True,

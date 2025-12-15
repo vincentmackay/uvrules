@@ -9,7 +9,7 @@ Created on Thu Feb 15 12:27:51 2024
 """
 
 import numpy as np
-import uvrules.geometry as geometry
+from . import geometry
 import matplotlib.pyplot as plt
 import copy
 from datetime import timedelta

@@ -11,9 +11,10 @@ from copy import deepcopy
 from datetime import datetime
 
 #from IPython.display import clear_output
-from uvrules.antarray import AntArray
-import uvrules.geometry as geometry
-import uvrules.utils as utils
+from . import AntArray
+from . import geometry
+from . import utils
+
 #import time
 
 def compactify_array(AA, verbose=False, n_max_baseline_counts=1, **add_ant_greedy_kwargs):

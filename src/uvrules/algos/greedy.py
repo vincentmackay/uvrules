@@ -16,9 +16,9 @@ from scipy.spatial import KDTree
 from multiprocessing import Pool, cpu_count
 import warnings
 from itertools import product
-import uvrules.geometry as geometry
-import uvrules.plotting as plotting
-import uvrules.utils as utils
+from .. import geometry
+from .. import plotting
+from .. import utils
 from datetime import datetime
 
 def add_ant_greedy(AA, commanded_order=1, compare_all_commanded=False, compare_all_antpos=False,
