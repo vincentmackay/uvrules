@@ -10,20 +10,7 @@ This is a tool for designing antenna layouts that fulfill a specified set of bas
 
 The `v0.1.0` release of `uvrules` corresponds to the implementation used in
 the analysis for:
-
-> MacKay et al., *[Exact paper title here]*, AAS Journals (in review).
-
-To reproduce the results in that manuscript, please use the tagged version
-[`v0.1.0`](https://github.com/<your-username>/uvrules/releases/tag/v0.1.0)
-(or the corresponding Zenodo record once available).
-
-A minimal workflow is:
-
-```bash
-pip install uvrules==0.1.0
-# or, from a clone:
-git checkout v0.1.0
-pip install .
+> MacKay et al., *Complete Sampling of the Plane with Realistic Radio Arrays: Introducing the RULES Algorithm, with Application to 21 cm Foreground Wedge Removal*, 2025, ApJ (accepted, in review).
 
 ---
 
