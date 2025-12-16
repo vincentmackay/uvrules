@@ -2,7 +2,7 @@
 
 `uvrules` implements the **Regular** ***uv*** **Layout Engineering Strategy (RULES)** algorithm for generating radio interferometer arrays with complete and efficient *uv*-plane coverage.
 
-This tool generates antenna layouts that fulfill a specified set of baseline vectors, and is optimized for sets of *uv*-complete baselines, as defined in MacKay et al. 2025 (*ApJ*, accepted), with applications to 21 cm cosmology and radio interferometry more broadly.
+This tool generates antenna layouts that fulfill a specified set of baselines, and is optimized for sets of *uv*-complete baselines, as defined in MacKay et al. 2025 (*ApJ*, accepted), with applications to 21 cm cosmology and radio interferometry more broadly.
 
 ## Features
 
