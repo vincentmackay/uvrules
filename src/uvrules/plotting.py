@@ -572,8 +572,8 @@ def plot_psf_2d(
         fov = angle_range_arcmin / 60
         angle_units = 'arcmin'
     
-    # For extended ranges (> 90°), don't clip sin_theta
-    # For physical ranges (≤ 90°), use clipping for backward compatibility
+    # For extended ranges (> 90 deg), don't clip sin_theta
+    # For physical ranges (<= 90 deg), use clipping for backward compatibility
     use_clipping = fov <= 90
     
     psf, sin_theta = compute_beam_nufft(uvs, n_px_side=n_px_side, fov_range=fov, 
@@ -599,7 +599,7 @@ def plot_psf_2d(
     R = np.sqrt(THETA_X**2 + THETA_Y**2)
     ANGLE = np.arctan2(THETA_Y, THETA_X)
     
-    # For extended ranges beyond 90°, force Cartesian coordinates
+    # For extended ranges beyond 90 deg, force Cartesian coordinates
     # Polar coordinates don't make physical sense beyond the sky
     if fov > 90:
         use_polar = False
@@ -638,7 +638,7 @@ def plot_psf_2d(
         
         # For extended ranges, add a visual indicator of the physical sky boundary
         if fov > 90:
-            # Draw a circle at the 90° boundary (physical sky limit)
+            # Draw a circle at the 90 deg boundary (physical sky limit)
             sky_limit = 90
             if angle_units == 'arcmin':
                 sky_limit *= 60

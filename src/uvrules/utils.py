@@ -315,7 +315,7 @@ def generate_commanded_hexa(min_bl_lambda=10, max_bl_lambda=100, packing_density
 def generate_commanded_radexp(min_bl_lambda=10, max_bl_lambda=100, 
                                      exp_base=1.1, radial_density=1.0, angular_density=1.0):
     angular_spacing = np.pi / (angular_density * 20)
-    # Include angle = 0 (positive u-axis) but exclude angle = π (negative u-axis)
+    # Include angle = 0 (positive u-axis) but exclude angle = pi (negative u-axis)
     angles = np.arange(0, np.pi, angular_spacing)
     
     uv_points = []
@@ -330,7 +330,6 @@ def generate_commanded_radexp(min_bl_lambda=10, max_bl_lambda=100,
                 u = r * np.cos(angle)
                 v = r * np.sin(angle)
                 
-                # This condition is now redundant since we exclude angle=π
                 uv_points.append([u, v])
             
             radial_index += radial_step
@@ -568,7 +567,7 @@ def generate_position_errors(antpos: np.ndarray, diameter: float, sigma_pos: flo
             # Only check if THIS antenna collides with others
             # Create array with just this antenna and all others
             if not geometry.collision_check_single_antenna(result_antpos, i, diameter):
-                break  # Success!
+                break  # Success
             else:
                 collision_count += 1
                 if collision_count % 1000 == 0:
